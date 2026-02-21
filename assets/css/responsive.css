@@ -1,0 +1,233 @@
+/* ========== Responsive Styles ========== */
+
+/* Extra Small devices (phones, less than 576px) */
+@media (max-width: 575.98px) {
+    .container-sm {
+        padding: 0 10px;
+    }
+    
+    .navbar-collapse {
+        padding-top: 20px;
+    }
+    
+    .product-card {
+        margin-bottom: 20px;
+    }
+    
+    .product-image {
+        height: 180px;
+    }
+    
+    .card {
+        margin-bottom: 20px;
+    }
+    
+    .table {
+        font-size: 0.9rem;
+    }
+    
+    .btn {
+        padding: 8px 12px;
+        font-size: 0.9rem;
+    }
+    
+    h1 {
+        font-size: 1.5rem;
+    }
+    
+    h2 {
+        font-size: 1.3rem;
+    }
+    
+    h3 {
+        font-size: 1.1rem;
+    }
+}
+
+/* Small devices (landscape phones, 576px and up) */
+@media (min-width: 576px) and (max-width: 767.98px) {
+    .product-card {
+        margin-bottom: 20px;
+    }
+    
+    .product-image {
+        height: 200px;
+    }
+}
+
+/* Medium devices (tablets, 768px and up) */
+@media (min-width: 768px) {
+    .product-image {
+        height: 250px;
+    }
+    
+    .grid-cols-2 {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+    }
+}
+
+/* Large devices (desktops, 992px and up) */
+@media (min-width: 992px) {
+    .product-image {
+        height: 280px;
+    }
+    
+    .grid-cols-3 {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+    }
+}
+
+/* Extra large devices (large desktops, 1200px and up) */
+@media (min-width: 1200px) {
+    .product-image {
+        height: 300px;
+    }
+    
+    .grid-cols-4 {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+    }
+    
+    .max-content {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+}
+
+/* ========== Tablet & Mobile Optimizations ========== */
+@media (max-width: 768px) {
+    .navbar-toggler {
+        border: none;
+        padding: 0;
+    }
+    
+    .navbar-brand {
+        font-size: 1.1rem;
+    }
+    
+    .sidebar {
+        position: fixed;
+        top: 0;
+        left: -250px;
+        width: 250px;
+        height: 100vh;
+        z-index: 1000;
+        transition: left 0.3s ease;
+    }
+    
+    .sidebar.show {
+        left: 0;
+    }
+    
+    .product-card {
+        margin-bottom: 15px;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .btn-block {
+        width: 100%;
+        display: block;
+    }
+    
+    .hide-mobile {
+        display: none !important;
+    }
+    
+    .text-center-mobile {
+        text-align: center;
+    }
+    
+    .col-12-mobile {
+        width: 100%;
+    }
+}
+
+/* ========== Landscape Orientation ========== */
+@media (max-height: 600px) and (orientation: landscape) {
+    .navbar {
+        padding: 5px 0;
+    }
+    
+    .nav-link {
+        padding: 0.25rem 0.75rem !important;
+    }
+}
+
+/* ========== Print Styles ========== */
+@media print {
+    body {
+        margin: 0;
+        padding: 0;
+    }
+    
+    .navbar,
+    .footer,
+    .btn,
+    .breadcrumb,
+    .sidebar,
+    .no-print {
+        display: none !important;
+    }
+    
+    .card {
+        border: 1px solid #000;
+        page-break-inside: avoid;
+    }
+    
+    a {
+        text-decoration: underline;
+    }
+    
+    img {
+        max-width: 100%;
+    }
+}
+
+/* ========== Flexbox Responsive Helpers ========== */
+.flex-column-mobile {
+    flex-direction: column;
+}
+
+@media (max-width: 768px) {
+    .flex-column-mobile {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .flex-row-md {
+        flex-direction: column;
+    }
+}
+
+/* ========== Grid Responsive Helpers ========== */
+@media (max-width: 768px) {
+    .grid-auto-mobile {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+/* ========== Section Spacing ========== */
+@media (max-width: 768px) {
+    .section-padding {
+        padding: 20px 0;
+    }
+    
+    .container {
+        padding: 0 15px;
+    }
+}
+
+/* ========== High DPI Devices (Retina) ========== */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .product-image {
+        background-size: cover;
+    }
+}

@@ -1,0 +1,190 @@
+/* ========== Personalización de Bootstrap con color #6B74DB ========== */
+
+/* Colores para Bootstrap */
+:root {
+    --bs-primary: #6B74DB;
+    --bs-primary-rgb: 107, 116, 219;
+    --ajitos-primary: #C2EDE8;
+    --ajitos-primary-dark: #9FDCD4;
+    --ajitos-primary-deep: #7CCFC5;
+    --ajitos-text: #0E2A26;
+    --ajitos-muted: #4A6D69;
+}
+
+/* Background colors */
+.bg-primary {
+    background-color: #6B74DB !important;
+}
+
+.bg-primary-light {
+    background-color: rgba(107, 116, 219, 0.1) !important;
+}
+
+/* Text colors */
+.text-primary {
+    color: #6B74DB !important;
+}
+
+/* Button primary */
+.btn-primary {
+    background-color: #6B74DB;
+    border-color: #6B74DB;
+    color: white;
+}
+
+.btn-primary:hover,
+.btn-primary:active,
+.btn-primary:focus {
+    background-color: #5461C8;
+    border-color: #5461C8;
+    color: white;
+}
+
+.btn-primary:disabled {
+    background-color: #ccc;
+    border-color: #ccc;
+}
+
+/* Outline primary button */
+.btn-outline-primary {
+    color: #6B74DB;
+    border-color: #6B74DB;
+}
+
+.btn-outline-primary:hover,
+.btn-outline-primary:focus {
+    background-color: #6B74DB;
+    border-color: #6B74DB;
+    color: white;
+}
+
+/* Links */
+a.text-primary {
+    color: #6B74DB !important;
+}
+
+a.text-primary:hover {
+    color: #5461C8 !important;
+}
+
+/* Badges */
+.badge.bg-primary {
+    background-color: #6B74DB !important;
+}
+
+.badge-ajitos {
+    background-color: var(--ajitos-primary-deep) !important;
+    color: var(--ajitos-text) !important;
+}
+
+.ajitos-badge {
+    background-color: var(--ajitos-primary-deep) !important;
+    color: var(--ajitos-text) !important;
+}
+
+.btn-ajitos {
+    background-color: var(--ajitos-primary-deep);
+    border-color: var(--ajitos-primary-deep);
+    color: var(--ajitos-text);
+}
+
+.btn-ajitos:hover,
+.btn-ajitos:focus {
+    background-color: var(--ajitos-primary-dark);
+    border-color: var(--ajitos-primary-dark);
+    color: var(--ajitos-text);
+}
+
+.btn-outline-ajitos {
+    color: var(--ajitos-muted);
+    border-color: var(--ajitos-primary-deep);
+}
+
+.btn-outline-ajitos:hover,
+.btn-outline-ajitos:focus {
+    background-color: var(--ajitos-primary);
+    border-color: var(--ajitos-primary-deep);
+    color: var(--ajitos-text);
+}
+
+/* Progress bars */
+.progress-bar {
+    background-color: #6B74DB !important;
+}
+
+/* Alert primary */
+.alert-primary {
+    background-color: rgba(107, 116, 219, 0.1);
+    border-color: #6B74DB;
+    color: #5461C8;
+}
+
+/* Border primary */
+.border-primary {
+    border-color: #6B74DB !important;
+}
+
+/* Breadcrumb active */
+.breadcrumb .active {
+    color: #6B74DB;
+}
+
+/* Card */
+.card {
+    border-color: #6B74DB;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom-color: #6B74DB;
+}
+
+/* Navbar */
+.navbar-brand {
+    color: #D092D6 !important;
+}
+
+.nav-link:hover,
+.nav-link.active {
+    color: #6B74DB !important;
+}
+
+/* Pagination */
+.page-link {
+    color: #6B74DB;
+}
+
+.page-link:hover {
+    background-color: #6B74DB;
+    border-color: #6B74DB;
+    color: white;
+}
+
+.page-item.active .page-link {
+    background-color: #6B74DB;
+    border-color: #6B74DB;
+}
+
+/* Form controls focus */
+.form-control:focus,
+.form-select:focus {
+    border-color: #6B74DB;
+    box-shadow: 0 0 0 0.2rem rgba(107, 116, 219, 0.25);
+}
+
+/* Dropdowns */
+.dropdown-item.active,
+.dropdown-item:active {
+    background-color: #6B74DB;
+}
+
+/* Modal header */
+.modal-header {
+    border-bottom-color: #6B74DB;
+}
+
+/* Toast */
+.toast-header {
+    background-color: #f8f9fa;
+    border-bottom-color: #6B74DB;
+}
