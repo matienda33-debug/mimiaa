@@ -18,7 +18,7 @@ if ($_SESSION['rol'] == 4) {
 
 $views = [
     'usuarios' => ['path' => '/tiendaAA/modules/mod1/usuarios.php', 'permission' => 'usuarios', 'label' => 'Usuarios'],
-    'personas' => ['path' => '/tiendaAA/modules/mod1/personas.php', 'permission' => 'usuarios', 'label' => 'Personas'],
+    'personas' => ['path' => '/tiendaAA/modules/mod1/personas.php', 'permission' => 'crear_clientes', 'label' => 'Personas'],
     'productos' => ['path' => '/tiendaAA/modules/mod2/productos.php', 'permission' => 'productos', 'label' => 'Productos'],
     'banners' => ['path' => '/tiendaAA/public/admin/banners.php', 'permission' => 'productos', 'label' => 'Banners Inicio'],
     'ventas' => ['path' => '/tiendaAA/modules/mod3/ventas.php', 'permission' => 'ventas', 'label' => 'Ventas'],
