@@ -54,6 +54,10 @@ class Auth {
     }
     
     public function hasPermission($permission) {
+        if ($this->isAdmin()) {
+            return true;
+        }
+
         if (!isset($_SESSION['permisos'])) {
             return false;
         }
