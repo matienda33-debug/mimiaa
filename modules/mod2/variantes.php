@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación y permiso
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 $auth->requirePermission('productos');
@@ -24,11 +24,24 @@ $productos_stmt = $db->prepare($productos_query);
 $productos_stmt->execute();
 $productos = $productos_stmt->fetchAll(PDO::FETCH_ASSOC);
 
+$producto_seleccionado = null;
+if ($producto_id) {
+    foreach ($productos as $prod) {
+        if ((string)$prod['id_raiz'] === (string)$producto_id) {
+            $producto_seleccionado = $prod;
+            break;
+        }
+    }
+}
+
 // Procesar formularios
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if ($_POST['action'] == 'create') {
         // Crear nueva variante
-        $id_producto_raiz = $_POST['id_producto_raiz'];
+        $id_producto_raiz = $_POST['id_producto_raiz'] ?? '';
+        if ($id_producto_raiz === '' && $producto_id) {
+            $id_producto_raiz = $producto_id;
+        }
         $color = sanitize($_POST['color']);
         $talla = sanitize($_POST['talla']);
         $stock_tienda = $_POST['stock_tienda'];
@@ -245,6 +258,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
     }
+    elseif ($_POST['action'] == 'delete_variante') {
+        // Desactivar variante
+        $id_variante = $_POST['id_variante'];
+        $query = "UPDATE productos_variantes SET activo = 0 WHERE id_variante = :id";
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(':id', $id_variante);
+        if ($stmt->execute()) {
+            $success = "Variante eliminada correctamente.";
+        } else {
+            $error = "Error al eliminar variante.";
+        }
+    }
 }
 
 // Obtener variantes con filtros
@@ -369,17 +394,19 @@ $tallas_comunes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '0-3M', '3-6M', '6-
                                        placeholder="Buscar por color, talla, SKU o producto..." 
                                        value="<?php echo $search; ?>">
                             </div>
-                            <div class="col-md-4">
+                            <?php if (!$producto_id): ?>
+                            <div class="col-md-3">
                                 <select class="form-select" name="producto_filter">
                                     <option value="">Todos los productos</option>
                                     <?php foreach ($productos as $prod): ?>
-                                        <option value="<?php echo $prod['id_raiz']; ?>" 
+                                        <option value="<?php echo $prod['id_raiz']; ?>"
                                             <?php echo $filter_producto == $prod['id_raiz'] ? 'selected' : ''; ?>>
                                             <?php echo $prod['codigo'] . ' - ' . $prod['nombre']; ?>
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
+                            <?php endif; ?>
                             <div class="col-md-2">
                                 <button type="submit" class="btn btn-primary w-100">
                                     <i class="fas fa-filter me-1"></i> Filtrar
@@ -446,18 +473,26 @@ $tallas_comunes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '0-3M', '3-6M', '6-
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Producto</th>
-                                        <th>Color</th>
-                                        <th>Talla</th>
-                                        <th>SKU</th>
-                                        <th>Precio</th>
+                        <?php if ($producto_id && $producto_seleccionado): ?>
+                        <div class="mb-3">
+                            <label class="form-label">Producto</label>
+                            <input type="text" class="form-control" value="<?php echo $producto_seleccionado['codigo'] . ' - ' . $producto_seleccionado['nombre']; ?>" readonly>
+                            <input type="hidden" name="id_producto_raiz" value="<?php echo $producto_seleccionado['id_raiz']; ?>">
+                        </div>
+                        <?php else: ?>
+                        <div class="mb-3">
+                            <label for="id_producto_raiz" class="form-label">Producto *</label>
+                            <select class="form-select" id="id_producto_raiz" name="id_producto_raiz" required>
+                                <option value="">Seleccionar producto</option>
+                                <?php foreach ($productos as $prod): ?>
+                                    <option value="<?php echo $prod['id_raiz']; ?>"
+                                        <?php echo $producto_id == $prod['id_raiz'] ? 'selected' : ''; ?>>
+                                        <?php echo $prod['codigo'] . ' - ' . $prod['nombre']; ?>
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <?php endif; ?>
                                         <th>Stock Tienda</th>
                                         <th>Stock Bodega</th>
                                         <th>Total</th>
@@ -528,6 +563,11 @@ $tallas_comunes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '0-3M', '3-6M', '6-
                                                     onclick="viewMovements(<?php echo $variante['id_variante']; ?>)" 
                                                     title="Movimientos">
                                                 <i class="fas fa-history"></i>
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-danger" 
+                                                    onclick="deleteVariante(<?php echo $variante['id_variante']; ?>)" 
+                                                    title="Eliminar">
+                                                <i class="fas fa-trash"></i>
                                             </button>
                                         </td>
                                     </tr>
@@ -833,6 +873,21 @@ $tallas_comunes = ['XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL', '0-3M', '3-6M', '6-
                 });
             }
         });
+    </script>
+
+    <form id="deleteVarianteForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="delete_variante">
+        <input type="hidden" name="id_variante" id="delete_variante_id">
+    </form>
+
+    <script>
+        function deleteVariante(id) {
+            if (!confirm('¿Eliminar esta variante?')) {
+                return;
+            }
+            document.getElementById('delete_variante_id').value = id;
+            document.getElementById('deleteVarianteForm').submit();
+        }
     </script>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>

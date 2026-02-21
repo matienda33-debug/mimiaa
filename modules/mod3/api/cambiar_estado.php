@@ -33,7 +33,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['factura_id']) && isset
         }
         
         $factura = $stmt->fetch(PDO::FETCH_ASSOC);
-        $estado_actual = $factura['estado_id'];
+        $estado_actual = $factura['id_estado'];
+        
+        // Obtener nombre del estado actual
+        $estado_query = "SELECT nombre FROM estado_factura WHERE id_estado = :id";
+        $estado_stmt = $db->prepare($estado_query);
+        $estado_stmt->bindParam(':id', $estado_actual);
+        $estado_stmt->execute();
+        $estado_actual_data = $estado_stmt->fetch(PDO::FETCH_ASSOC);
+        $estado_actual_nombre = strtolower($estado_actual_data['nombre'] ?? 'desconocido');
+        
+        // Validar cambios después de empaque
+        // La factura NO puede ser modificada (retrocedida) después de alcanzar "empacado"
+        $estados_no_editables = ['empacado', 'enviado', 'entregada', 'cancelada'];
+        
+        if (in_array($estado_actual_nombre, $estados_no_editables)) {
+            // Solo permitir cambio a cancelada (para cancelaciones) 
+            // y movimiento dentro del flujo normal (empacado→enviado→entregada)
+            $nuevo_estado_query = "SELECT nombre FROM estado_factura WHERE id_estado = :id";
+            $nuevo_estado_stmt = $db->prepare($nuevo_estado_query);
+            $nuevo_estado_stmt->bindParam(':id', $nuevo_estado);
+            $nuevo_estado_stmt->execute();
+            $nuevo_estado_data = $nuevo_estado_stmt->fetch(PDO::FETCH_ASSOC);
+            $nuevo_estado_nombre = strtolower($nuevo_estado_data['nombre'] ?? 'desconocido');
+            
+            // Flujo permitido después de empaque: empacado → enviado → entregada
+            $flujo_permitido = [
+                'empacado' => ['enviado', 'cancelada'],
+                'enviado' => ['entregada', 'cancelada'],
+                'entregada' => ['cancelada'],
+                'cancelada' => []  // No hay cambios permitidos después de cancelada
+            ];
+            
+            if (!isset($flujo_permitido[$estado_actual_nombre]) || 
+                !in_array($nuevo_estado_nombre, $flujo_permitido[$estado_actual_nombre])) {
+                echo json_encode([
+                    'success' => false, 
+                    'message' => 'No se puede modificar esta factura. Ya fue empacada y solo se permite continuar en el flujo normal (Enviado → Entregada) o cancelarla.'
+                ]);
+                exit();
+            }
+        }
         
         // Si cambia de pendiente a pagada, asignar puntos
         if ($estado_actual == 1 && $nuevo_estado == 2 && $factura['id_cliente']) {

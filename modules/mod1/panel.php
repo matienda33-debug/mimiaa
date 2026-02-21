@@ -28,16 +28,26 @@ $views = [
 ];
 
 $view = $_GET['view'] ?? 'ventas';
+$action = $_GET['action'] ?? '';
+$id_factura = $_GET['id'] ?? '';
 $iframeSrc = '';
 $tituloVista = 'Panel';
 $errorVista = '';
+$forzarError = isset($_GET['error']) && $_GET['error'] === 'no_permission';
 
-if (!isset($views[$view])) {
+// Si es una acción de detalle de factura
+if ($forzarError) {
+    $errorVista = 'Acceso No Autorizado';
+    $tituloVista = 'Acceso No Autorizado';
+} elseif ($action === 'detalle' && !empty($id_factura)) {
+    $tituloVista = 'Detalle de Factura';
+    $iframeSrc = '/tiendaAA/modules/mod3/detalle_factura.php?id=' . urlencode($id_factura) . '&embedded=1';
+} elseif (!isset($views[$view])) {
     $errorVista = 'La sección solicitada no existe.';
 } else {
     $vistaSeleccionada = $views[$view];
     if (!$auth->hasPermission($vistaSeleccionada['permission'])) {
-        $errorVista = 'No tienes permisos para acceder a esta sección.';
+        $errorVista = 'Acceso No Autorizado';
     } else {
         $separador = (strpos($vistaSeleccionada['path'], '?') !== false) ? '&' : '?';
         $iframeSrc = $vistaSeleccionada['path'] . $separador . 'embedded=1';
@@ -54,33 +64,44 @@ if (!isset($views[$view])) {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        :root {
+            --brand-primary: #E35AD9;
+            --brand-primary-dark: #C94CC0;
+            --brand-ink: #ffffff;
+            --sidebar-bg: #F4C7F0;
+            --sidebar-bg-hover: #EFB4EA;
+            --ajitos-bg: #C2EDE8;
+            --ajitos-text: #1f2a29;
+        }
         .sidebar {
             min-height: 100vh;
-            background: #2c3e50;
+            background: var(--sidebar-bg);
         }
         .sidebar .nav-link {
-            color: #ecf0f1;
+            color: #4a2b4f;
             padding: 10px 15px;
             margin: 5px 0;
+            border-radius: 6px;
         }
         .sidebar .nav-link:hover {
-            background: #34495e;
-            color: #1abc9c;
+            background: var(--sidebar-bg-hover);
+            color: #3b1f3f;
         }
         .sidebar .nav-link.active {
-            background: #1abc9c;
-            color: white;
+            background: var(--brand-primary);
+            color: var(--brand-ink);
         }
         .brand-title {
-            color: #1abc9c;
+            color: #3b1f3f;
             font-weight: bold;
         }
         .ajitos-badge {
-            background: #e74c3c;
-            color: white;
+            background: var(--ajitos-bg);
+            color: var(--ajitos-text);
             padding: 2px 8px;
-            border-radius: 4px;
+            border-radius: 999px;
             font-size: 0.8rem;
+            font-weight: 600;
         }
         .iframe-wrapper {
             width: 100%;
@@ -94,6 +115,21 @@ if (!isset($views[$view])) {
             width: 100%;
             height: 100%;
             border: 0;
+        }
+        .alert-danger {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+        }
+        .alert-danger strong {
+            font-size: 1.2em;
+        }
+        .alert-danger small {
+            color: #721c24;
+            opacity: 0.85;
         }
     </style>
 </head>
@@ -122,6 +158,9 @@ if (!isset($views[$view])) {
                                 <i class="fas fa-users me-2"></i> Usuarios
                             </a>
                         </li>
+                        <?php endif; ?>
+
+                        <?php if ($auth->hasPermission('usuarios') || $auth->hasPermission('crear_clientes')): ?>
                         <li class="nav-item">
                             <a class="nav-link <?php echo $view === 'personas' ? 'active' : ''; ?>" href="panel.php?view=personas">
                                 <i class="fas fa-address-card me-2"></i> Personas
@@ -192,7 +231,14 @@ if (!isset($views[$view])) {
                 </div>
 
                 <?php if (!empty($errorVista)): ?>
-                    <div class="alert alert-danger"><?php echo htmlspecialchars($errorVista); ?></div>
+                    <div class="alert alert-danger alert-dismissible fade show d-flex align-items-center" role="alert">
+                        <i class="fas fa-lock me-3" style="font-size: 1.5em;"></i>
+                        <div>
+                            <strong><?php echo htmlspecialchars($errorVista); ?></strong><br>
+                            <small>No cuentas con los permisos necesarios para acceder a esta sección. Contacta con un administrador si crees que es un error.</small>
+                        </div>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
                 <?php else: ?>
                     <div class="iframe-wrapper">
                         <iframe id="panelIframe" src="<?php echo htmlspecialchars($iframeSrc); ?>" title="<?php echo htmlspecialchars($tituloVista); ?>"></iframe>

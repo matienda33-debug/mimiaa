@@ -10,13 +10,13 @@ $pagina = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
 $por_pagina = 12;
 $offset = ($pagina - 1) * $por_pagina;
 
-// Obtener departamentos con es_ajitos = 1
+// Obtener productos Ajitos Kids (es_ajitos = 1)
 $query = "SELECT pr.*, d.nombre as departamento_nombre,
                  (SELECT nombre_archivo FROM productos_raiz_fotos 
                   WHERE id_producto_raiz = pr.id_raiz AND es_principal = 1 LIMIT 1) as imagen_principal
           FROM productos_raiz pr
           INNER JOIN departamentos d ON pr.id_departamento = d.id_departamento
-          WHERE pr.activo = 1 AND d.activo = 1 AND d.es_ajitos = 1
+          WHERE pr.activo = 1 AND d.activo = 1 AND pr.es_ajitos = 1
           ORDER BY pr.fecha_creacion DESC
           LIMIT :offset, :por_pagina";
 
@@ -29,7 +29,7 @@ $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 // Contar total
 $count_query = "SELECT COUNT(*) as total FROM productos_raiz pr
                 INNER JOIN departamentos d ON pr.id_departamento = d.id_departamento
-                WHERE pr.activo = 1 AND d.activo = 1 AND d.es_ajitos = 1";
+                WHERE pr.activo = 1 AND d.activo = 1 AND pr.es_ajitos = 1";
 $count_stmt = $db->prepare($count_query);
 $count_stmt->execute();
 $total = $count_stmt->fetch(PDO::FETCH_ASSOC)['total'];

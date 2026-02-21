@@ -210,11 +210,8 @@ $productos = $stmt_productos->fetchAll(PDO::FETCH_ASSOC);
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
-            <?php include $_SERVER['DOCUMENT_ROOT'] . '/tiendaAA/includes/sidebar.php'; ?>
-            
             <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            <main class="col-12 px-2">
                 <!-- Header -->
                 <?php include $_SERVER['DOCUMENT_ROOT'] . '/tiendaAA/includes/header.php'; ?>
                 

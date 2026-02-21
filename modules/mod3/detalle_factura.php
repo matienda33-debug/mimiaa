@@ -6,13 +6,16 @@ $database = new Database();
 $db = $database->getConnection();
 $auth = new Auth($db);
 
+// Detectar si está embebido
+$embedded = isset($_GET['embedded']) && $_GET['embedded'] == '1';
+
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 
 if (!$auth->hasPermission('ventas')) {
-    header('Location: ../../index.php?error=no_permission');
+    header('Location: /tiendaAA/index.php?error=no_permission');
     exit();
 }
 
@@ -36,7 +39,7 @@ $query_factura = "SELECT fc.*,
                          c.direccion as cliente_direccion,
                          c.puntos as cliente_puntos
                   FROM factura_cabecera fc
-                  LEFT JOIN estados e ON fc.id_estado = e.id_estado
+                  LEFT JOIN estado_factura e ON fc.id_estado = e.id_estado
                   LEFT JOIN usuarios u ON fc.id_usuario = u.id_usuario
                   LEFT JOIN clientes c ON fc.id_cliente = c.id_cliente
                   WHERE fc.id_factura = :id";
@@ -51,14 +54,15 @@ if (!$factura) {
     exit();
 }
 
-// Obtener detalle de la factura
+// Obtener detalle de la factura con fotos de productos
 $query_detalle = "SELECT fd.*, 
                          pr.nombre as producto_nombre,
+                         pr.id_raiz,
                          pv.color,
                          pv.talla,
                          pv.sku
                   FROM factura_detalle fd
-                  INNER JOIN productos_variantes pv ON fd.id_producto = pv.id_variante
+                  INNER JOIN productos_variantes pv ON fd.id_producto_variante = pv.id_variante
                   INNER JOIN productos_raiz pr ON pv.id_producto_raiz = pr.id_raiz
                   WHERE fd.id_factura = :id
                   ORDER BY fd.id_detalle";
@@ -68,20 +72,40 @@ $stmt_detalle->bindParam(':id', $id_factura);
 $stmt_detalle->execute();
 $detalles = $stmt_detalle->fetchAll(PDO::FETCH_ASSOC);
 
+// Obtener fotos de los productos
+foreach ($detalles as &$detalle) {
+    $stmt_fotos = $db->prepare("SELECT * FROM productos_raiz_fotos WHERE id_producto_raiz = :id AND es_principal = 1 LIMIT 1");
+    $stmt_fotos->bindParam(':id', $detalle['id_raiz']);
+    $stmt_fotos->execute();
+    $foto = $stmt_fotos->fetch(PDO::FETCH_ASSOC);
+    $detalle['foto'] = $foto ? ($foto['nombre_archivo'] ?? null) : null;
+}
+unset($detalle);
+
 // Calcular totales
 $subtotal = $factura['subtotal'];
 $descuento = $factura['descuento'] ?? 0;
 $total = $subtotal - $descuento;
 $puntos_ganados = $factura['puntos_ganados'] ?? 0;
 
-// Obtener historial de estados si existe
-$query_historial = "SELECT * FROM factura_historial 
-                    WHERE id_factura = :id 
-                    ORDER BY fecha_cambio DESC";
-$stmt_historial = $db->prepare($query_historial);
-$stmt_historial->bindParam(':id', $id_factura);
-$stmt_historial->execute();
-$historial = $stmt_historial->fetchAll(PDO::FETCH_ASSOC);
+// Determinar si la factura puede ser editada (antes de empaque)
+$estado_no_editable = in_array(strtolower($factura['estado_nombre'] ?? ''), 
+                               ['empacado', 'enviado', 'entregada', 'cancelada']);
+
+// Obtener historial de estados si existe (tabla opcional)
+$historial = [];
+try {
+    $query_historial = "SELECT * FROM factura_historial 
+                        WHERE id_factura = :id 
+                        ORDER BY fecha_cambio DESC";
+    $stmt_historial = $db->prepare($query_historial);
+    $stmt_historial->bindParam(':id', $id_factura);
+    $stmt_historial->execute();
+    $historial = $stmt_historial->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    // Tabla factura_historial no existe, continuar sin historial
+    $historial = [];
+}
 
 $titulo = "Factura #" . $factura['numero_factura'];
 ?>
@@ -135,6 +159,31 @@ $titulo = "Factura #" . $factura['numero_factura'];
         .print-only {
             display: none;
         }
+        <?php if ($embedded): ?>
+        .sidebar,
+        nav.sidebar,
+        .navbar,
+        .navbar-custom,
+        .topbar,
+        .offcanvas,
+        #sidebar,
+        #sidebarMenu,
+        [data-role="sidebar"] {
+            display: none !important;
+        }
+        main,
+        .main-content,
+        .content-wrapper,
+        .page-content,
+        .container-fluid,
+        .container {
+            margin-left: 0 !important;
+            max-width: 100%;
+        }
+        .row {
+            --bs-gutter-x: 1rem;
+        }
+        <?php endif; ?>
         @media print {
             .no-print {
                 display: none !important;
@@ -155,40 +204,69 @@ $titulo = "Factura #" . $factura['numero_factura'];
 <body>
     <div class="container-fluid">
         <div class="row">
+            <?php if (!$embedded): ?>
             <!-- Sidebar -->
             <?php include $_SERVER['DOCUMENT_ROOT'] . '/tiendaAA/includes/sidebar.php'; ?>
+            <?php endif; ?>
             
             <!-- Main content -->
-            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
+            <main class="<?php echo $embedded ? 'w-100' : 'col-md-9 ms-sm-auto col-lg-10'; ?> px-md-4">
+                <?php if (!$embedded): ?>
                 <!-- Header -->
                 <?php include $_SERVER['DOCUMENT_ROOT'] . '/tiendaAA/includes/header.php'; ?>
+                <?php endif; ?>
                 
                 <div class="container-fluid mt-4">
                     <!-- Botones de acción -->
-                    <div class="d-flex justify-content-between align-items-center mb-4 no-print">
+                    <div class="d-flex justify-content-between align-items-center mb-4 no-print <?php echo $embedded ? 'p-0 border-0' : ''; ?>">
+                        <?php if (!$embedded): ?>
                         <nav aria-label="breadcrumb">
                             <ol class="breadcrumb">
                                 <li class="breadcrumb-item"><a href="ventas.php">Ventas</a></li>
                                 <li class="breadcrumb-item active">Factura #<?php echo $factura['numero_factura']; ?></li>
                             </ol>
                         </nav>
-                        <div class="btn-group">
-                            <button onclick="window.print()" class="btn btn-outline-primary">
-                                <i class="fas fa-print me-2"></i>Imprimir
+                        <?php else: ?>
+                        <h5 class="mb-0">Factura #<?php echo $factura['numero_factura']; ?></h5>
+                        <?php endif; ?>
+                        <div class="btn-group" role="group">
+                            <button onclick="window.print()" class="btn btn-outline-primary btn-sm" title="Imprimir">
+                                <i class="fas fa-print me-1"></i><span class="d-none d-md-inline">Imprimir</span>
                             </button>
-                            <a href="editar_factura.php?id=<?php echo $id_factura; ?>" class="btn btn-warning">
-                                <i class="fas fa-edit me-2"></i>Editar
+                            <button class="btn btn-outline-success btn-sm" onclick="abrirModalEnviarCorreo()" title="Enviar por correo">
+                                <i class="fas fa-envelope me-1"></i><span class="d-none d-md-inline">Email</span>
+                            </button>
+                            <?php if (!$embedded): ?>
+                            <?php if (!$estado_no_editable): ?>
+                            <a href="editar_factura.php?id=<?php echo $id_factura; ?>" class="btn btn-warning btn-sm" title="Editar">
+                                <i class="fas fa-edit me-1"></i><span class="d-none d-md-inline">Editar</span>
                             </a>
-                            <?php if ($auth->isAdmin() || $factura['id_estado'] == 1): ?>
-                            <button class="btn btn-danger" onclick="confirmarEliminar(<?php echo $id_factura; ?>)">
-                                <i class="fas fa-trash me-2"></i>Eliminar
+                            <?php else: ?>
+                            <button class="btn btn-warning btn-sm" disabled title="No se puede editar facturas empacadas o enviadas">
+                                <i class="fas fa-edit me-1"></i><span class="d-none d-md-inline">Editar</span>
                             </button>
                             <?php endif; ?>
-                            <button class="btn btn-success" onclick="descargarPDF()">
-                                <i class="fas fa-download me-2"></i>PDF
+                            <?php if ($auth->isAdmin() || $factura['id_estado'] == 1): ?>
+                            <button class="btn btn-danger btn-sm" onclick="confirmarEliminar(<?php echo $id_factura; ?>)" title="Eliminar">
+                                <i class="fas fa-trash me-1"></i><span class="d-none d-md-inline">Eliminar</span>
+                            </button>
+                            <?php endif; ?>
+                            <?php endif; ?>
+                            <button class="btn btn-success btn-sm" onclick="descargarPDF()" title="Descargar PDF">
+                                <i class="fas fa-download me-1"></i><span class="d-none d-md-inline">PDF</span>
                             </button>
                         </div>
                     </div>
+                    
+                    <!-- Alerta de restricción de edición -->
+                    <?php if ($estado_no_editable): ?>
+                    <div class="alert alert-info no-print mb-4" role="alert">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Factura en estado "<?php echo ucfirst($factura['estado_nombre']); ?>"</strong> — 
+                        Esta factura no puede ser editada porque ya fue empacada. 
+                        Si necesita hacer cambios, por favor cree una nota de ajuste o devolución.
+                    </div>
+                    <?php endif; ?>
                     
                     <!-- Encabezado de la factura -->
                     <div class="card mb-4">
@@ -266,14 +344,15 @@ $titulo = "Factura #" . $factura['numero_factura'];
                                         <thead class="table-dark">
                                             <tr>
                                                 <th width="5%">#</th>
-                                                <th width="10%">Código</th>
+                                                <th width="8%">Foto</th>
+                                                <th width="8%">Código</th>
                                                 <th>Producto</th>
-                                                <th width="10%">Color</th>
-                                                <th width="10%">Talla</th>
-                                                <th width="10%">Cantidad</th>
-                                                <th width="12%">Precio Unitario</th>
-                                                <th width="12%">Descuento</th>
-                                                <th width="12%">Subtotal</th>
+                                                <th width="8%">Color</th>
+                                                <th width="8%">Talla</th>
+                                                <th width="8%">Cantidad</th>
+                                                <th width="10%">Precio Unitario</th>
+                                                <th width="10%">Descuento</th>
+                                                <th width="10%">Subtotal</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -284,6 +363,13 @@ $titulo = "Factura #" . $factura['numero_factura'];
                                             ?>
                                             <tr>
                                                 <td><?php echo $contador++; ?></td>
+                                                <td>
+                                                    <?php if (!empty($detalle['foto'])): ?>
+                                                        <img src="<?php echo '../../' . IMG_DIR . 'productos/' . htmlspecialchars($detalle['foto']); ?>" alt="Foto" class="img-fluid" style="max-width: 50px; height: 50px; object-fit: cover; border-radius: 3px;">
+                                                    <?php else: ?>
+                                                        <span class="text-muted small">Sin foto</span>
+                                                    <?php endif; ?>
+                                                </td>
                                                 <td><code><?php echo $detalle['sku']; ?></code></td>
                                                 <td><?php echo htmlspecialchars($detalle['producto_nombre']); ?></td>
                                                 <td>
@@ -387,7 +473,7 @@ $titulo = "Factura #" . $factura['numero_factura'];
                     <?php endif; ?>
                     
                     <!-- Acciones rápidas -->
-                    <?php if ($auth->hasPermission('ventas')): ?>
+                    <?php if (!$embedded && $auth->hasPermission('ventas')): ?>
                     <div class="card no-print">
                         <div class="card-header">
                             <i class="fas fa-bolt me-2"></i>Acciones Rápidas
@@ -443,6 +529,43 @@ $titulo = "Factura #" . $factura['numero_factura'];
                     <?php endif; ?>
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- Modal para solicitar correo -->
+    <div class="modal fade" id="modalEnviarCorreoDetalle" tabindex="-1" aria-labelledby="modalEnviarCorreoDetalleLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title" id="modalEnviarCorreoDetalleLabel">
+                        <i class="fas fa-envelope me-2"></i> Enviar Factura por Correo
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="correoDestinoDetalle" class="form-label">Correo Electrónico</label>
+                        <input type="email" class="form-control" id="correoDestinoDetalle" placeholder="ejemplo@correo.com">
+                        <small class="form-text text-muted">Ingrese el correo donde desea recibir la factura.</small>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="guardarCorreoDetalle">
+                        <label class="form-check-label" for="guardarCorreoDetalle">
+                            Guardar este correo en el cliente
+                        </label>
+                    </div>
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Nota:</strong> Si no recibes el correo en 5 minutos, revisa tu carpeta de spam.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="enviarCorreoConfirmado()">
+                        <i class="fas fa-send me-2"></i> Enviar Factura
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -534,6 +657,91 @@ $titulo = "Factura #" . $factura['numero_factura'];
     // Imprimir
     function imprimirFactura() {
         window.print();
+    }
+
+    // Modal para enviar correo
+    function abrirModalEnviarCorreo() {
+        const modal = new bootstrap.Modal(document.getElementById('modalEnviarCorreoDetalle'));
+        
+        // Pre-llenar correo del cliente si existe
+        const correoCliente = '<?php echo $factura['cliente_email'] ?? ''; ?>';
+        document.getElementById('correoDestinoDetalle').value = correoCliente || '';
+        
+        modal.show();
+    }
+
+    function enviarCorreoConfirmado() {
+        const correo = document.getElementById('correoDestinoDetalle').value.trim();
+        const guardarCorreo = document.getElementById('guardarCorreoDetalle').checked;
+
+        if (!correo) {
+            alert('Por favor ingrese un correo válido');
+            return;
+        }
+
+        // Validar formato de correo
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(correo)) {
+            alert('Por favor ingrese un correo válido');
+            return;
+        }
+
+        // Mostrar spinner
+        const btnEnviar = document.querySelector('#modalEnviarCorreoDetalle .btn-primary');
+        const textOriginal = btnEnviar.innerHTML;
+        btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Enviando...';
+        btnEnviar.disabled = true;
+
+        // Obtener la URL base dinámicamente
+        const baseUrl = window.location.protocol + '//' + window.location.host + '/tiendaAA';
+        
+        // Enviar solicitud
+        fetch(baseUrl + '/modules/mod3/api/enviar_factura.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'factura_id=<?php echo $id_factura; ?>&correo=' + encodeURIComponent(correo) + '&guardar=' + (guardarCorreo ? '1' : '0')
+        })
+        .then(response => response.json())
+        .then(data => {
+            btnEnviar.innerHTML = textOriginal;
+            btnEnviar.disabled = false;
+
+            if (data.success) {
+                // Cerrar modal
+                const modal = bootstrap.Modal.getInstance(document.getElementById('modalEnviarCorreoDetalle'));
+                modal.hide();
+
+                // Limpiar campos
+                document.getElementById('correoDestinoDetalle').value = '';
+                document.getElementById('guardarCorreoDetalle').checked = false;
+
+                // Mostrar éxito
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Éxito!',
+                    text: 'Comprobante enviado a ' + correo,
+                    timer: 3000
+                });
+            } else {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error',
+                    text: data.message || 'Error al enviar el correo'
+                });
+            }
+        })
+        .catch(error => {
+            btnEnviar.innerHTML = textOriginal;
+            btnEnviar.disabled = false;
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Error de conexión al enviar'
+            });
+            console.error('Error:', error);
+        });
     }
     
     // Mostrar mensajes de éxito/error

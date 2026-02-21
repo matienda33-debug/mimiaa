@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 
@@ -356,29 +356,118 @@ $subtotal_sin_iva = $factura['subtotal'] - $iva;
         </div>
     </div>
 
+    <!-- Modal para solicitar correo -->
+    <div class="modal fade" id="modalEnviarCorreo" tabindex="-1" aria-labelledby="modalEnviarCorreoLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title" id="modalEnviarCorreoLabel">
+                        <i class="fas fa-envelope me-2"></i> Enviar Comprobante por Correo
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="correoDestino" class="form-label">Correo Electrónico</label>
+                        <input type="email" class="form-control" id="correoDestino" placeholder="ejemplo@correo.com">
+                        <small class="form-text text-muted">Ingrese el correo donde desea recibir el comprobante.</small>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="guardarCorreo">
+                        <label class="form-check-label" for="guardarCorreo">
+                            Guardar este correo en el cliente
+                        </label>
+                    </div>
+                    <div class="alert alert-info small">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <strong>Nota:</strong> Si no recibes el correo en 5 minutos, revisa tu carpeta de spam.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="enviarCorreoConfirmado()">
+                        <i class="fas fa-send me-2"></i> Enviar Comprobante
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         function enviarCorreo() {
-            if (confirm('¿Enviar comprobante por correo electrónico?')) {
-                fetch('api/enviar_factura.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                    },
-                    body: 'factura_id=<?php echo $factura_id; ?>'
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        alert('Comprobante enviado exitosamente');
-                    } else {
-                        alert('Error: ' + data.message);
-                    }
-                })
-                .catch(error => {
-                    alert('Error al enviar el correo');
-                });
-            }
+            // Mostrar modal para solicitar correo
+            const modal = new bootstrap.Modal(document.getElementById('modalEnviarCorreo'));
+            modal.show();
         }
+
+        function enviarCorreoConfirmado() {
+            const correo = document.getElementById('correoDestino').value.trim();
+            const guardarCorreo = document.getElementById('guardarCorreo').checked;
+
+            if (!correo) {
+                alert('Por favor ingrese un correo válido');
+                return;
+            }
+
+            // Validar formato de correo
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(correo)) {
+                alert('Por favor ingrese un correo válido');
+                return;
+            }
+
+            // Mostrar spinner
+            const btnEnviar = document.querySelector('#modalEnviarCorreo .btn-primary');
+            const textOriginal = btnEnviar.innerHTML;
+            btnEnviar.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span> Enviando...';
+            btnEnviar.disabled = true;
+
+            // Obtener la URL base dinámicamente
+            const baseUrl = window.location.protocol + '//' + window.location.host + '/tiendaAA';
+            
+            // Enviar solicitud
+            fetch(baseUrl + '/modules/mod3/api/enviar_factura.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: 'factura_id=<?php echo $factura_id; ?>&correo=' + encodeURIComponent(correo) + '&guardar=' + (guardarCorreo ? '1' : '0')
+            })
+            .then(response => response.json())
+            .then(data => {
+                btnEnviar.innerHTML = textOriginal;
+                btnEnviar.disabled = false;
+
+                if (data.success) {
+                    // Cerrar modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('modalEnviarCorreo'));
+                    modal.hide();
+
+                    // Limpiar campos
+                    document.getElementById('correoDestino').value = '';
+                    document.getElementById('guardarCorreo').checked = false;
+
+                    // Mostrar éxito
+                    alert('✓ Comprobante enviado exitosamente a ' + correo);
+                } else {
+                    alert('✗ Error al enviar: ' + (data.message || 'Error desconocido'));
+                }
+            })
+            .catch(error => {
+                btnEnviar.innerHTML = textOriginal;
+                btnEnviar.disabled = false;
+                alert('✗ Error de conexión al enviar el correo');
+                console.error('Error:', error);
+            });
+        }
+
+        // Pre-llenar correo del cliente si existe
+        document.addEventListener('DOMContentLoaded', function() {
+            const correoCliente = '<?php echo $factura['cliente_email'] ?? ''; ?>';
+            if (correoCliente) {
+                document.getElementById('correoDestino').value = correoCliente;
+            }
+        });
         
         // Imprimir automáticamente si se solicita
         if (window.location.search.includes('print=true')) {

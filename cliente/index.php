@@ -106,6 +106,18 @@ $banner3 = obtenerBannerCarrusel(3);
             border-color: var(--brand-primary);
             color: #fff;
         }
+        .navbar-nav .nav-item {
+            display: flex;
+            align-items: center;
+        }
+        .navbar-nav .nav-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .navbar-nav .dropdown-toggle::after {
+            margin-top: 0;
+        }
         .ajitos-badge {
             background: var(--ajitos-primary-deep);
             color: var(--ajitos-text);

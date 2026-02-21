@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación y permiso
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 $auth->requirePermission('ventas');
@@ -40,9 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 // Verificar stock y obtener información
                 $query = "SELECT pv.*, pr.nombre as producto_nombre, pr.codigo as producto_codigo,
-                         pr.precio_venta as precio_base, pr.es_ajitos
+                         pr.precio_venta as precio_base, pr.es_ajitos, pf.nombre_archivo as foto_principal
                          FROM productos_variantes pv
                          INNER JOIN productos_raiz pr ON pv.id_producto_raiz = pr.id_raiz
+                         LEFT JOIN productos_raiz_fotos pf ON pf.id_producto_raiz = pr.id_raiz AND pf.es_principal = 1
                          WHERE pv.id_variante = :id AND pv.activo = 1 AND pr.activo = 1";
                 
                 $stmt = $db->prepare($query);
@@ -73,9 +74,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 'variante_id' => $variante_id,
                                 'producto_codigo' => $producto['producto_codigo'],
                                 'producto_nombre' => $producto['producto_nombre'],
+                                'foto' => $producto['foto_principal'] ?? null,
                                 'color' => $producto['color'],
                                 'talla' => $producto['talla'],
                                 'precio' => $precio,
+                                'descuento_pct' => 0,
+                                'descuento_unitario' => 0,
                                 'cantidad' => $cantidad,
                                 'subtotal' => $cantidad * $precio,
                                 'es_ajitos' => $producto['es_ajitos']
@@ -110,10 +114,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         
                         if ($cantidad <= $stock['stock_total']) {
                             $item['cantidad'] = $cantidad;
-                            $item['subtotal'] = $item['cantidad'] * $item['precio'];
+                            $precio_final = max(0, $item['precio'] - ($item['descuento_unitario'] ?? 0));
+                            $item['subtotal'] = $item['cantidad'] * $precio_final;
                         } else {
                             $item['cantidad'] = $stock['stock_total'];
-                            $item['subtotal'] = $item['cantidad'] * $item['precio'];
+                            $precio_final = max(0, $item['precio'] - ($item['descuento_unitario'] ?? 0));
+                            $item['subtotal'] = $item['cantidad'] * $precio_final;
                             $error = "Stock máximo: " . $stock['stock_total'];
                         }
                         break;
@@ -138,6 +144,35 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $_SESSION['venta_actual']['items'] = array_values($_SESSION['venta_actual']['items']);
                 recalcularVenta();
                 $success = "Producto removido de la venta.";
+                break;
+
+            case 'update_discount':
+                // Actualizar descuento por producto (monto unitario)
+                $variante_id = $_POST['variante_id'];
+                $descuento_monto = (float)$_POST['descuento_monto'];
+                $descuento_monto = max(0, $descuento_monto);
+
+                foreach ($_SESSION['venta_actual']['items'] as &$item) {
+                    if ($item['variante_id'] == $variante_id) {
+                        $max_descuento = $item['precio'];
+                        $descuento_unitario = min($descuento_monto, $max_descuento);
+                        $pct = $item['precio'] > 0 ? round(($descuento_unitario / $item['precio']) * 100, 2) : 0;
+
+                        $item['descuento_unitario'] = $descuento_unitario;
+                        $item['descuento_pct'] = $pct;
+                        $precio_final = max(0, $item['precio'] - $descuento_unitario);
+                        $item['subtotal'] = $item['cantidad'] * $precio_final;
+                        break;
+                    }
+                }
+
+                if (!empty($pct) && $pct > 10) {
+                    $warning = "Alerta: el descuento supera el 10% para este producto.";
+                } else {
+                    $success = "Descuento aplicado al producto.";
+                }
+
+                recalcularVenta();
                 break;
                 
             case 'clear_venta':
@@ -289,7 +324,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         $detalle_stmt->bindParam(':id_producto_variante', $item['variante_id']);
                         $detalle_stmt->bindParam(':cantidad', $item['cantidad']);
                         $detalle_stmt->bindParam(':precio_unitario', $item['precio']);
-                        $detalle_stmt->bindValue(':descuento_unitario', 0.00);
+                        $detalle_descuento = $item['descuento_unitario'] ?? 0;
+                        $detalle_stmt->bindValue(':descuento_unitario', $detalle_descuento);
                         $detalle_stmt->bindParam(':subtotal', $item['subtotal']);
                         $detalle_stmt->execute();
                         
@@ -429,6 +465,29 @@ function recalcularVenta() {
     $_SESSION['venta_actual']['total'] = $subtotal - $_SESSION['venta_actual']['descuento'];
 }
 
+// Evitar duplicados de variantes en la venta
+function normalizarItemsVenta() {
+    if (empty($_SESSION['venta_actual']['items'])) {
+        return;
+    }
+
+    $items = [];
+    foreach ($_SESSION['venta_actual']['items'] as $item) {
+        $id = $item['variante_id'];
+        if (!isset($items[$id])) {
+            $items[$id] = $item;
+            continue;
+        }
+
+        $items[$id]['cantidad'] += $item['cantidad'];
+        $descuento_unitario = $items[$id]['descuento_unitario'] ?? 0;
+        $precio_final = max(0, $items[$id]['precio'] - $descuento_unitario);
+        $items[$id]['subtotal'] = $items[$id]['cantidad'] * $precio_final;
+    }
+
+    $_SESSION['venta_actual']['items'] = array_values($items);
+}
+
 // Función para generar número de factura
 function generarNumeroFactura($db) {
     $query = "SELECT MAX(CAST(SUBSTRING(numero_factura, 3) AS UNSIGNED)) as last_num 
@@ -446,18 +505,22 @@ function generarNumeroFactura($db) {
 
 // Buscar productos para agregar a la venta
 $productos_busqueda = [];
+$variantes_por_producto = [];
 if (isset($_GET['buscar_producto'])) {
     $busqueda = sanitize($_GET['buscar_producto']);
     
-    $query = "SELECT pv.*, pr.codigo, pr.nombre as producto_nombre, 
-              pr.precio_venta as precio_base, (pv.stock_tienda + pv.stock_bodega) as stock_total,
-              pr.es_ajitos
-              FROM productos_variantes pv
-              INNER JOIN productos_raiz pr ON pv.id_producto_raiz = pr.id_raiz
+    $query = "SELECT pr.id_raiz, pr.codigo, pr.nombre as producto_nombre,
+              pr.precio_venta as precio_base, pr.es_ajitos,
+              COALESCE(SUM(pv.stock_tienda + pv.stock_bodega), 0) as stock_total,
+              pf.nombre_archivo as foto_principal
+              FROM productos_raiz pr
+              INNER JOIN productos_variantes pv ON pv.id_producto_raiz = pr.id_raiz AND pv.activo = 1
+              LEFT JOIN productos_raiz_fotos pf ON pf.id_producto_raiz = pr.id_raiz AND pf.es_principal = 1
               WHERE (pr.nombre LIKE :busqueda OR pr.codigo LIKE :busqueda OR 
                     pv.color LIKE :busqueda OR pv.sku LIKE :busqueda)
-              AND pv.activo = 1 AND pr.activo = 1
+              AND pr.activo = 1
               AND (pv.stock_tienda + pv.stock_bodega) > 0
+              GROUP BY pr.id_raiz, pr.codigo, pr.nombre, pr.precio_venta, pr.es_ajitos, pf.nombre_archivo
               LIMIT 20";
     
     $stmt = $db->prepare($query);
@@ -465,7 +528,33 @@ if (isset($_GET['buscar_producto'])) {
     $stmt->bindParam(':busqueda', $busqueda_term);
     $stmt->execute();
     $productos_busqueda = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!empty($productos_busqueda)) {
+        $ids = array_column($productos_busqueda, 'id_raiz');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $variantes_query = "SELECT pv.id_variante, pv.id_producto_raiz, pv.color, pv.talla,
+                            pv.precio_venta, (pv.stock_tienda + pv.stock_bodega) as stock_total
+                            FROM productos_variantes pv
+                            WHERE pv.id_producto_raiz IN ($placeholders)
+                            AND pv.activo = 1
+                            AND (pv.stock_tienda + pv.stock_bodega) > 0
+                            ORDER BY pv.color, pv.talla";
+        $variantes_stmt = $db->prepare($variantes_query);
+        $variantes_stmt->execute($ids);
+        $variantes = $variantes_stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($variantes as $variante) {
+            $producto_id = $variante['id_producto_raiz'];
+            if (!isset($variantes_por_producto[$producto_id])) {
+                $variantes_por_producto[$producto_id] = [];
+            }
+            $variantes_por_producto[$producto_id][] = $variante;
+        }
+    }
 }
+
+// Consolidar items por variante para evitar duplicados en la vista
+normalizarItemsVenta();
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -524,6 +613,65 @@ if (isset($_GET['buscar_producto'])) {
         .search-item:hover {
             background: #f8f9fa;
         }
+        .producto-thumb {
+            width: 48px;
+            height: 48px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+        }
+        .item-thumb {
+            width: 38px;
+            height: 38px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #e5e7eb;
+            margin-right: 8px;
+        }
+        .modal-producto-img {
+            width: 100%;
+            max-height: 220px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .venta-compact .card-header {
+            padding: 0.5rem 0.75rem;
+        }
+        .venta-compact .card-body {
+            padding: 0.75rem;
+        }
+        .venta-compact .table > :not(caption) > * > * {
+            padding: 0.35rem 0.5rem;
+        }
+        .venta-compact .venta-summary {
+            padding: 12px;
+        }
+        .venta-compact .venta-items {
+            max-height: 320px;
+        }
+        .venta-compact .productos-container {
+            max-height: 360px;
+        }
+        .venta-compact .btn-venta {
+            font-size: 1rem;
+            padding: 8px 12px;
+        }
+        .venta-compact .item-thumb {
+            width: 32px;
+            height: 32px;
+        }
+        .venta-compact .producto-thumb {
+            width: 40px;
+            height: 40px;
+        }
+        .venta-compact .alert {
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .venta-compact .h2 {
+            font-size: 1.4rem;
+        }
     </style>
 </head>
 <body>
@@ -531,7 +679,7 @@ if (isset($_GET['buscar_producto'])) {
     <?php include '../../includes/header.php'; ?>
     <?php endif; ?>
     
-    <div class="container-fluid mt-4">
+    <div class="container-fluid mt-4 venta-compact">
         <div class="row">
             <main class="col-12 px-2">
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
@@ -563,6 +711,13 @@ if (isset($_GET['buscar_producto'])) {
                 <?php if (isset($error)): ?>
                     <div class="alert alert-danger alert-dismissible fade show" role="alert">
                         <?php echo $error; ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (isset($warning)): ?>
+                    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                        <?php echo $warning; ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 <?php endif; ?>
@@ -600,9 +755,9 @@ if (isset($_GET['buscar_producto'])) {
                                         <table class="table table-sm table-hover">
                                             <thead>
                                                 <tr>
+                                                    <th>Imagen</th>
                                                     <th>Código</th>
                                                     <th>Producto</th>
-                                                    <th>Color/Talla</th>
                                                     <th>Precio</th>
                                                     <th>Stock</th>
                                                     <th>Acción</th>
@@ -610,9 +765,14 @@ if (isset($_GET['buscar_producto'])) {
                                             </thead>
                                             <tbody>
                                                 <?php foreach ($productos_busqueda as $producto): 
-                                                    $precio = $producto['precio_venta'] ?: $producto['precio_base'];
+                                                    $imagen = $producto['foto_principal']
+                                                        ? BASE_URL . 'uploads/productos/' . $producto['foto_principal']
+                                                        : BASE_URL . 'assets/img/no-image.png';
                                                 ?>
                                                 <tr>
+                                                    <td>
+                                                        <img src="<?php echo $imagen; ?>" class="producto-thumb" alt="<?php echo htmlspecialchars($producto['producto_nombre']); ?>">
+                                                    </td>
                                                     <td><small><?php echo $producto['codigo']; ?></small></td>
                                                     <td>
                                                         <?php echo $producto['producto_nombre']; ?>
@@ -620,28 +780,23 @@ if (isset($_GET['buscar_producto'])) {
                                                             <span class="badge badge-ajitos">Ajitos</span>
                                                         <?php endif; ?>
                                                     </td>
-                                                    <td>
-                                                        <?php echo $producto['color']; ?>
-                                                        <strong>/ <?php echo $producto['talla']; ?></strong>
-                                                    </td>
-                                                    <td><?php echo formatMoney($precio); ?></td>
+                                                    <td><?php echo formatMoney($producto['precio_base']); ?></td>
                                                     <td>
                                                         <span class="badge bg-<?php echo $producto['stock_total'] > 5 ? 'success' : ($producto['stock_total'] > 0 ? 'warning' : 'danger'); ?>">
                                                             <?php echo $producto['stock_total']; ?>
                                                         </span>
                                                     </td>
                                                     <td>
-                                                        <form method="POST" action="" class="d-inline">
-                                                            <input type="hidden" name="action" value="add_item">
-                                                            <input type="hidden" name="variante_id" value="<?php echo $producto['id_variante']; ?>">
-                                                            <div class="input-group input-group-sm" style="width: 120px;">
-                                                                <input type="number" class="form-control" name="cantidad" 
-                                                                       value="1" min="1" max="<?php echo $producto['stock_total']; ?>">
-                                                                <button class="btn btn-primary" type="submit">
-                                                                    <i class="fas fa-plus"></i>
-                                                                </button>
-                                                            </div>
-                                                        </form>
+                                                        <button type="button" class="btn btn-sm btn-primary btn-seleccionar-variantes"
+                                                                data-bs-toggle="modal" data-bs-target="#seleccionarVarianteModal"
+                                                                data-product-id="<?php echo $producto['id_raiz']; ?>"
+                                                                data-product-name="<?php echo htmlspecialchars($producto['producto_nombre']); ?>"
+                                                                data-product-code="<?php echo htmlspecialchars($producto['codigo']); ?>"
+                                                                data-product-image="<?php echo $imagen; ?>"
+                                                                data-product-price="<?php echo $producto['precio_base']; ?>">
+                                                            <i class="fas fa-ruler-combined me-1"></i>
+                                                            Elegir talla y color
+                                                        </button>
                                                     </td>
                                                 </tr>
                                                 <?php endforeach; ?>
@@ -786,35 +941,58 @@ if (isset($_GET['buscar_producto'])) {
                                         <div class="card mb-2">
                                             <div class="card-body py-2">
                                                 <div class="d-flex justify-content-between align-items-center">
-                                                    <div>
-                                                        <h6 class="mb-0" style="font-size: 0.9rem;">
-                                                            <?php echo $item['producto_nombre']; ?>
-                                                        </h6>
-                                                        <small class="text-muted">
-                                                            <?php echo $item['color']; ?> / <?php echo $item['talla']; ?>
-                                                            <?php if ($item['es_ajitos']): ?>
-                                                                <span class="badge badge-ajitos">Ajitos</span>
-                                                            <?php endif; ?>
-                                                        </small>
+                                                    <div class="d-flex align-items-center">
+                                                        <?php
+                                                            $item_imagen = !empty($item['foto'])
+                                                                ? BASE_URL . 'uploads/productos/' . $item['foto']
+                                                                : BASE_URL . 'assets/img/no-image.png';
+                                                        ?>
+                                                        <img src="<?php echo $item_imagen; ?>" class="item-thumb" alt="<?php echo htmlspecialchars($item['producto_nombre']); ?>">
+                                                        <div>
+                                                            <h6 class="mb-0" style="font-size: 0.9rem;">
+                                                                <?php echo $item['producto_nombre']; ?>
+                                                            </h6>
+                                                            <small class="text-muted">
+                                                                <?php echo $item['color']; ?> / <?php echo $item['talla']; ?>
+                                                                <?php if ($item['es_ajitos']): ?>
+                                                                    <span class="badge badge-ajitos">Ajitos</span>
+                                                                <?php endif; ?>
+                                                            </small>
+                                                        </div>
                                                     </div>
                                                     <div class="text-end">
                                                         <div class="input-group input-group-sm" style="width: 100px;">
                                                             <input type="number" class="form-control" 
                                                                    value="<?php echo $item['cantidad']; ?>" 
                                                                    min="1" id="cantidad_<?php echo $item['variante_id']; ?>">
-                                                            <button class="btn btn-outline-primary btn-sm" 
+                                                            <button type="button" class="btn btn-outline-primary btn-sm" 
                                                                     onclick="actualizarCantidad(<?php echo $item['variante_id']; ?>)">
                                                                 <i class="fas fa-sync-alt"></i>
                                                             </button>
                                                         </div>
+                                                            <div class="input-group input-group-sm mt-2" style="width: 160px;">
+                                                                <span class="input-group-text">Q</span>
+                                                                <input type="number" class="form-control" 
+                                                                       value="<?php echo $item['descuento_unitario'] ?? 0; ?>" 
+                                                                       min="0" step="0.01" 
+                                                                       id="descuento_<?php echo $item['variante_id']; ?>"
+                                                                       title="Descuento unitario">
+                                                                <button type="button" class="btn btn-outline-warning btn-sm" 
+                                                                        onclick="actualizarDescuento(<?php echo $item['variante_id']; ?>)">
+                                                                    <i class="fas fa-tag"></i>
+                                                                </button>
+                                                            </div>
                                                         <div class="mt-1">
                                                             <small><?php echo formatMoney($item['precio']); ?> c/u</small><br>
+                                                                <?php if (!empty($item['descuento_unitario'])): ?>
+                                                                    <small class="text-success">-<?php echo formatMoney($item['descuento_unitario']); ?> (<?php echo $item['descuento_pct']; ?>%)</small><br>
+                                                                <?php endif; ?>
                                                             <strong><?php echo formatMoney($item['subtotal']); ?></strong>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div class="text-end mt-1">
-                                                    <button class="btn btn-sm btn-outline-danger" 
+                                                        <button type="button" class="btn btn-sm btn-outline-danger" 
                                                             onclick="removerItem(<?php echo $item['variante_id']; ?>)">
                                                         <i class="fas fa-trash"></i>
                                                     </button>
@@ -862,10 +1040,10 @@ if (isset($_GET['buscar_producto'])) {
                             <!-- Botones de acción -->
                             <div class="d-grid gap-2">
                                 <button class="btn btn-success btn-lg btn-venta" 
-                                        onclick="procesarVenta()" 
+                                        data-bs-toggle="modal" data-bs-target="#confirmVentaModal"
                                         <?php echo count($_SESSION['venta_actual']['items']) == 0 ? 'disabled' : ''; ?>>
                                     <i class="fas fa-check-circle me-2"></i>
-                                    Procesar Venta
+                                    Confirmar Venta
                                 </button>
                                 
                                 <button class="btn btn-primary btn-venta" 
@@ -884,6 +1062,116 @@ if (isset($_GET['buscar_producto'])) {
                     </div>
                 </div>
             </main>
+        </div>
+    </div>
+
+    <!-- Modal para seleccionar talla y color -->
+    <div class="modal fade" id="seleccionarVarianteModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="POST" action="" onsubmit="return validarSeleccionVariante()">
+                    <input type="hidden" name="action" value="add_item">
+                    <input type="hidden" name="variante_id" id="modalVarianteId">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalTituloProducto">Seleccionar talla y color</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-5">
+                                <img id="modalImagenProducto" src="" alt="Producto" class="modal-producto-img">
+                                <div class="mt-3">
+                                    <div class="text-muted" id="modalCodigoProducto"></div>
+                                    <div class="h5 text-primary" id="modalPrecioProducto"></div>
+                                    <div class="small text-muted">Stock disponible: <span id="modalStock">0</span></div>
+                                </div>
+                            </div>
+                            <div class="col-md-7">
+                                <div class="mb-3">
+                                    <label class="form-label">Color</label>
+                                    <select class="form-select" id="modalColor"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Talla</label>
+                                    <select class="form-select" id="modalTalla"></select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Cantidad</label>
+                                    <input type="number" class="form-control" name="cantidad" id="modalCantidad" value="1" min="1">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Agregar a la venta</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de confirmacion de venta -->
+    <div class="modal fade" id="confirmVentaModal" tabindex="-1">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Confirmar Venta</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <?php if (count($_SESSION['venta_actual']['items']) == 0): ?>
+                        <div class="alert alert-info">No hay productos en la venta.</div>
+                    <?php else: ?>
+                        <?php foreach ($_SESSION['venta_actual']['items'] as $item): ?>
+                            <?php
+                                $item_imagen = !empty($item['foto'])
+                                    ? BASE_URL . 'uploads/productos/' . $item['foto']
+                                    : BASE_URL . 'assets/img/no-image.png';
+                            ?>
+                            <div class="d-flex align-items-center justify-content-between border-bottom py-2">
+                                <div class="d-flex align-items-center">
+                                    <img src="<?php echo $item_imagen; ?>" class="item-thumb" alt="<?php echo htmlspecialchars($item['producto_nombre']); ?>">
+                                    <div>
+                                        <div class="fw-semibold"><?php echo $item['producto_nombre']; ?></div>
+                                        <small class="text-muted"><?php echo $item['color']; ?> / <?php echo $item['talla']; ?></small>
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <div><?php echo $item['cantidad']; ?> x <?php echo formatMoney($item['precio']); ?></div>
+                                    <?php if (!empty($item['descuento_unitario'])): ?>
+                                        <div class="text-success">-<?php echo formatMoney($item['descuento_unitario']); ?> (<?php echo $item['descuento_pct']; ?>%)</div>
+                                    <?php endif; ?>
+                                    <div class="fw-bold"><?php echo formatMoney($item['subtotal']); ?></div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                        <div class="mt-3">
+                            <div class="d-flex justify-content-between">
+                                <span>Subtotal</span>
+                                <strong><?php echo formatMoney($_SESSION['venta_actual']['subtotal']); ?></strong>
+                            </div>
+                            <?php if ($_SESSION['venta_actual']['descuento'] > 0): ?>
+                                <div class="d-flex justify-content-between text-success">
+                                    <span>Descuento</span>
+                                    <strong>-<?php echo formatMoney($_SESSION['venta_actual']['descuento']); ?></strong>
+                                </div>
+                            <?php endif; ?>
+                            <hr>
+                            <div class="d-flex justify-content-between">
+                                <span class="h5 mb-0">Total</span>
+                                <span class="h5 mb-0 text-primary"><?php echo formatMoney($_SESSION['venta_actual']['total']); ?></span>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-success" onclick="confirmarVenta()" <?php echo count($_SESSION['venta_actual']['items']) == 0 ? 'disabled' : ''; ?>>
+                        Confirmar venta
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -920,6 +1208,12 @@ if (isset($_GET['buscar_producto'])) {
         <input type="hidden" name="action" value="remove_item">
         <input type="hidden" name="variante_id" id="remove_variante_id">
     </form>
+
+    <form id="updateDiscountForm" method="POST" style="display: none;">
+        <input type="hidden" name="action" value="update_discount">
+        <input type="hidden" name="variante_id" id="discount_variante_id">
+        <input type="hidden" name="descuento_monto" id="discount_monto">
+    </form>
     
     <form id="usePointsForm" method="POST" style="display: none;">
         <input type="hidden" name="action" value="use_points">
@@ -941,6 +1235,111 @@ if (isset($_GET['buscar_producto'])) {
         document.getElementById('metodoPago').addEventListener('change', function() {
             <?php $_SESSION['venta_actual']['metodo_pago'] = "' + this.value + '"; ?>
         });
+
+        const variantesPorProducto = <?php echo json_encode($variantes_por_producto); ?>;
+        let variantesActivas = [];
+        let precioBaseActivo = 0;
+
+        const modalColor = document.getElementById('modalColor');
+        const modalTalla = document.getElementById('modalTalla');
+        const modalVarianteId = document.getElementById('modalVarianteId');
+        const modalCantidad = document.getElementById('modalCantidad');
+        const modalStock = document.getElementById('modalStock');
+        const modalPrecio = document.getElementById('modalPrecioProducto');
+
+        function formatQ(value) {
+            const numero = Number(value || 0);
+            return 'Q' + numero.toFixed(2);
+        }
+
+        function cargarColores() {
+            const colores = [...new Set(variantesActivas.map(v => v.color))];
+            modalColor.innerHTML = '';
+            colores.forEach(color => {
+                const option = document.createElement('option');
+                option.value = color;
+                option.textContent = color;
+                modalColor.appendChild(option);
+            });
+            modalColor.disabled = colores.length === 0;
+            cargarTallas();
+        }
+
+        function cargarTallas() {
+            const colorSeleccionado = modalColor.value;
+            const tallas = variantesActivas
+                .filter(v => v.color === colorSeleccionado)
+                .map(v => v.talla);
+            const tallasUnicas = [...new Set(tallas)];
+            modalTalla.innerHTML = '';
+            tallasUnicas.forEach(talla => {
+                const option = document.createElement('option');
+                option.value = talla;
+                option.textContent = talla;
+                modalTalla.appendChild(option);
+            });
+            modalTalla.disabled = tallasUnicas.length === 0;
+            actualizarSeleccionVariante();
+        }
+
+        function actualizarSeleccionVariante() {
+            const colorSeleccionado = modalColor.value;
+            const tallaSeleccionada = modalTalla.value;
+            const variante = variantesActivas.find(v => v.color === colorSeleccionado && v.talla === tallaSeleccionada);
+
+            if (variante) {
+                modalVarianteId.value = variante.id_variante;
+                modalStock.textContent = variante.stock_total;
+                modalCantidad.max = variante.stock_total;
+                modalCantidad.value = 1;
+
+                const precioVariante = parseFloat(variante.precio_venta || 0);
+                const precioFinal = precioVariante > 0 ? precioVariante : precioBaseActivo;
+                modalPrecio.textContent = formatQ(precioFinal);
+            } else {
+                modalVarianteId.value = '';
+                modalStock.textContent = '0';
+                modalCantidad.max = 0;
+                modalPrecio.textContent = formatQ(precioBaseActivo);
+            }
+        }
+
+        function validarSeleccionVariante() {
+            if (!modalVarianteId.value) {
+                alert('Seleccione color y talla antes de agregar.');
+                return false;
+            }
+            if (parseInt(modalCantidad.value, 10) <= 0) {
+                alert('Cantidad invalida.');
+                return false;
+            }
+            return true;
+        }
+
+        document.querySelectorAll('.btn-seleccionar-variantes').forEach(button => {
+            button.addEventListener('click', () => {
+                const productoId = button.getAttribute('data-product-id');
+                const productoNombre = button.getAttribute('data-product-name');
+                const productoCodigo = button.getAttribute('data-product-code');
+                const productoImagen = button.getAttribute('data-product-image');
+                const productoPrecio = parseFloat(button.getAttribute('data-product-price') || '0');
+
+                precioBaseActivo = productoPrecio;
+                variantesActivas = variantesPorProducto[productoId] || [];
+
+                document.getElementById('modalTituloProducto').textContent = productoNombre;
+                document.getElementById('modalImagenProducto').src = productoImagen;
+                document.getElementById('modalCodigoProducto').textContent = productoCodigo;
+                modalPrecio.textContent = formatQ(productoPrecio);
+                modalCantidad.value = 1;
+                modalVarianteId.value = '';
+
+                cargarColores();
+            });
+        });
+
+        modalColor.addEventListener('change', cargarTallas);
+        modalTalla.addEventListener('change', actualizarSeleccionVariante);
         
         function actualizarCantidad(varianteId) {
             const cantidad = document.getElementById('cantidad_' + varianteId).value;
@@ -955,6 +1354,13 @@ if (isset($_GET['buscar_producto'])) {
                 document.getElementById('removeItemForm').submit();
             }
         }
+
+        function actualizarDescuento(varianteId) {
+            const descuento = document.getElementById('descuento_' + varianteId).value;
+            document.getElementById('discount_variante_id').value = varianteId;
+            document.getElementById('discount_monto').value = descuento;
+            document.getElementById('updateDiscountForm').submit();
+        }
         
         function usarPuntos() {
             const puntos = document.getElementById('puntosInput').value;
@@ -966,12 +1372,10 @@ if (isset($_GET['buscar_producto'])) {
             }
         }
         
-        function procesarVenta() {
-            if (confirm('¿Procesar venta y generar factura?')) {
-                document.getElementById('form_tipo_venta').value = document.getElementById('tipoVenta').value;
-                document.getElementById('form_metodo_pago').value = document.getElementById('metodoPago').value;
-                document.getElementById('processVentaForm').submit();
-            }
+        function confirmarVenta() {
+            document.getElementById('form_tipo_venta').value = document.getElementById('tipoVenta').value;
+            document.getElementById('form_metodo_pago').value = document.getElementById('metodoPago').value;
+            document.getElementById('processVentaForm').submit();
         }
         
         function generarFactura() {

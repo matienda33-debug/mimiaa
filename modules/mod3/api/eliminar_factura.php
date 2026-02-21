@@ -9,7 +9,7 @@ $db = $database->getConnection();
 $auth = new Auth($db);
 
 if (!$auth->isLoggedIn() || !$auth->hasPermission('ventas')) {
-    header('Location: ../../index.php?error=no_permission');
+    header('Location: /tiendaAA/index.php?error=no_permission');
     exit();
 }
 

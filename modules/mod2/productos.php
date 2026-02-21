@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación y permiso
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 $auth->requirePermission('productos');
@@ -32,7 +32,63 @@ $marcas = $marcas_stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Procesar formularios
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if ($_POST['action'] == 'create') {
+    if ($_POST['action'] == 'create_departamento') {
+        // Crear nuevo departamento
+        header('Content-Type: application/json');
+        $nombre = sanitize($_POST['nombre']);
+        
+        // Verificar que no exista
+        $check_query = "SELECT id_departamento FROM departamentos WHERE nombre = :nombre";
+        $check_stmt = $db->prepare($check_query);
+        $check_stmt->bindParam(':nombre', $nombre);
+        $check_stmt->execute();
+        
+        if ($check_stmt->rowCount() > 0) {
+            echo json_encode(['success' => false, 'message' => 'Este departamento ya existe']);
+            exit();
+        }
+        
+        $insert_query = "INSERT INTO departamentos (nombre, activo) VALUES (:nombre, 1)";
+        $insert_stmt = $db->prepare($insert_query);
+        $insert_stmt->bindParam(':nombre', $nombre);
+        
+        if ($insert_stmt->execute()) {
+            $id = $db->lastInsertId();
+            echo json_encode(['success' => true, 'id' => $id, 'nombre' => $nombre]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Error al crear departamento']);
+        }
+        exit();
+    }
+    elseif ($_POST['action'] == 'create_marca') {
+        // Crear nueva marca
+        header('Content-Type: application/json');
+        $nombre = sanitize($_POST['nombre']);
+        
+        // Verificar que no exista
+        $check_query = "SELECT id_marca FROM marcas WHERE nombre = :nombre";
+        $check_stmt = $db->prepare($check_query);
+        $check_stmt->bindParam(':nombre', $nombre);
+        $check_stmt->execute();
+        
+        if ($check_stmt->rowCount() > 0) {
+            echo json_encode(['success' => false, 'message' => 'Esta marca ya existe']);
+            exit();
+        }
+        
+        $insert_query = "INSERT INTO marcas (nombre, activo) VALUES (:nombre, 1)";
+        $insert_stmt = $db->prepare($insert_query);
+        $insert_stmt->bindParam(':nombre', $nombre);
+        
+        if ($insert_stmt->execute()) {
+            $id = $db->lastInsertId();
+            echo json_encode(['success' => true, 'id' => $id, 'nombre' => $nombre]);
+        } else {
+            echo json_encode(['success' => false, 'message' => 'Error al crear marca']);
+        }
+        exit();
+    }
+    elseif ($_POST['action'] == 'create') {
         // Crear nuevo producto raíz
         $codigo = sanitize($_POST['codigo']);
         $nombre = sanitize($_POST['nombre']);
@@ -45,6 +101,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $etiqueta = $_POST['etiqueta'];
         $es_ajitos = isset($_POST['es_ajitos']) ? 1 : 0;
         
+        // Función para generar código único
+        $codigo_original = $codigo;
+        $codigo_generado = false;
+        
         // Validar que el código sea único
         $check_query = "SELECT COUNT(*) as count FROM productos_raiz WHERE codigo = :codigo";
         $check_stmt = $db->prepare($check_query);
@@ -53,26 +113,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $check_result = $check_stmt->fetch(PDO::FETCH_ASSOC);
         
         if ($check_result['count'] > 0) {
-            $error = "El código '{$codigo}' ya existe. Por favor utiliza un código diferente.";
-        } else {
-            $query = "INSERT INTO productos_raiz (codigo, nombre, descripcion, id_departamento, id_marca, 
-                      tipo_ropa, precio_compra, precio_venta, etiqueta, es_ajitos, activo) 
-                      VALUES (:codigo, :nombre, :descripcion, :id_departamento, :id_marca, 
-                      :tipo_ropa, :precio_compra, :precio_venta, :etiqueta, :es_ajitos, 1)";
+            // Generar código único automáticamente
+            $contador = 1;
+            $codigo_nuevo = $codigo_original . '-' . $contador;
             
-            $stmt = $db->prepare($query);
-            $stmt->bindParam(':codigo', $codigo);
-            $stmt->bindParam(':nombre', $nombre);
-            $stmt->bindParam(':descripcion', $descripcion);
-            $stmt->bindParam(':id_departamento', $id_departamento);
-            $stmt->bindParam(':id_marca', $id_marca);
-            $stmt->bindParam(':tipo_ropa', $tipo_ropa);
-            $stmt->bindParam(':precio_compra', $precio_compra);
-            $stmt->bindParam(':precio_venta', $precio_venta);
-            $stmt->bindParam(':etiqueta', $etiqueta);
-            $stmt->bindParam(':es_ajitos', $es_ajitos);
-            
-            if ($stmt->execute()) {
+            while (true) {
+                $check_stmt->bindParam(':codigo', $codigo_nuevo);
+                $check_stmt->execute();
+                $check_result = $check_stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if ($check_result['count'] == 0) {
+                    $codigo = $codigo_nuevo;
+                    $codigo_generado = true;
+                    break;
+                }
+                $contador++;
+                $codigo_nuevo = $codigo_original . '-' . $contador;
+            }
+        }
+        
+        $query = "INSERT INTO productos_raiz (codigo, nombre, descripcion, id_departamento, id_marca, 
+                  tipo_ropa, precio_compra, precio_venta, etiqueta, es_ajitos, activo) 
+                  VALUES (:codigo, :nombre, :descripcion, :id_departamento, :id_marca, 
+                  :tipo_ropa, :precio_compra, :precio_venta, :etiqueta, :es_ajitos, 1)";
+        
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(':codigo', $codigo);
+        $stmt->bindParam(':nombre', $nombre);
+        $stmt->bindParam(':descripcion', $descripcion);
+        $stmt->bindParam(':id_departamento', $id_departamento);
+        $stmt->bindParam(':id_marca', $id_marca);
+        $stmt->bindParam(':tipo_ropa', $tipo_ropa);
+        $stmt->bindParam(':precio_compra', $precio_compra);
+        $stmt->bindParam(':precio_venta', $precio_venta);
+        $stmt->bindParam(':etiqueta', $etiqueta);
+        $stmt->bindParam(':es_ajitos', $es_ajitos);
+        
+        if ($stmt->execute()) {
             $id_raiz = $db->lastInsertId();
             
             // Si la etiqueta es "oferta", crear un registro en la tabla ofertas
@@ -122,9 +199,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
             
             $success = "Producto creado exitosamente. ID: " . $id_raiz;
-            } else {
-                $error = "Error al crear producto. Intenta de nuevo.";
+            if ($codigo_generado) {
+                $success .= " | Código generado automáticamente: <strong>" . $codigo . "</strong> (el código '" . $codigo_original . "' ya existía)";
             }
+        } else {
+            $error = "Error al crear producto. Intenta de nuevo.";
         }
     }
     elseif ($_POST['action'] == 'update') {
@@ -292,6 +371,50 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $error = "Error al eliminar foto.";
         }
     }
+    elseif ($_POST['action'] == 'replace_photo') {
+        // Reemplazar foto
+        $id_foto = $_POST['id_foto'];
+        $id_raiz = $_POST['id_raiz'];
+        
+        // Obtener foto actual
+        $query = "SELECT nombre_archivo FROM productos_raiz_fotos WHERE id_foto = :id_foto";
+        $stmt = $db->prepare($query);
+        $stmt->bindParam(':id_foto', $id_foto);
+        $stmt->execute();
+        $foto_actual = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($foto_actual && !empty($_FILES['foto_reemplazo']['name'])) {
+            $upload = uploadImage([
+                'name' => $_FILES['foto_reemplazo']['name'],
+                'tmp_name' => $_FILES['foto_reemplazo']['tmp_name'],
+                'size' => $_FILES['foto_reemplazo']['size']
+            ], 'productos');
+            
+            if ($upload['success']) {
+                // Eliminar archivo antiguo
+                $file_path = UPLOAD_DIR . 'productos/' . $foto_actual['nombre_archivo'];
+                if (file_exists($file_path)) {
+                    unlink($file_path);
+                }
+                
+                // Actualizar base de datos
+                $update_query = "UPDATE productos_raiz_fotos SET nombre_archivo = :nombre_archivo WHERE id_foto = :id_foto";
+                $update_stmt = $db->prepare($update_query);
+                $update_stmt->bindParam(':id_foto', $id_foto);
+                $update_stmt->bindParam(':nombre_archivo', $upload['filename']);
+                
+                if ($update_stmt->execute()) {
+                    $success = "Foto reemplazada exitosamente.";
+                } else {
+                    $error = "Error al actualizar foto en base de datos.";
+                }
+            } else {
+                $error = "Error al procesar la imagen. Verifica el formato y tamaño.";
+            }
+        } else {
+            $error = "Error: Foto no encontrada o archivo no seleccionado.";
+        }
+    }
     elseif ($_POST['action'] == 'set_main_photo') {
         // Establecer foto principal
         $id_foto = $_POST['id_foto'];
@@ -320,6 +443,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 $search = isset($_GET['search']) ? sanitize($_GET['search']) : '';
 $filter_depto = isset($_GET['departamento']) ? $_GET['departamento'] : '';
 $filter_ajitos = isset($_GET['ajitos']) ? $_GET['ajitos'] : '';
+$view_mode = isset($_GET['view_mode']) ? $_GET['view_mode'] : 'grid';
+
+if (!in_array($view_mode, ['grid', 'table'], true)) {
+    $view_mode = 'grid';
+}
+
+function buildViewUrl($mode) {
+    $params = $_GET;
+    $params['view_mode'] = $mode;
+    $query = http_build_query($params);
+    return 'productos.php' . ($query ? '?' . $query : '');
+}
 
 $query = "SELECT pr.*, d.nombre as departamento_nombre, m.nombre as marca_nombre 
           FROM productos_raiz pr 
@@ -402,6 +537,30 @@ if ($action == 'edit' && $id) {
             object-fit: cover;
             border-radius: 5px;
         }
+        .product-grid-card {
+            border: 1px solid #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+            height: 100%;
+        }
+        .product-grid-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        }
+        .product-grid-card img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+        }
+        .product-grid-card .card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .product-grid-price {
+            font-weight: 700;
+        }
         .etiqueta-oferta {
             background: #ff6b6b;
             color: white;
@@ -430,9 +589,39 @@ if ($action == 'edit' && $id) {
             top: 5px;
             right: 5px;
             display: none;
+            gap: 4px;
         }
         .photo-container:hover .photo-actions {
-            display: block;
+            display: flex;
+        }
+        /* Estilos para dropdowns buscables */
+        .departamento-dropdown,
+        .marca-dropdown {
+            background: white;
+            border: 1px solid #dee2e6;
+            border-top: none;
+            border-radius: 0 0 0.25rem 0.25rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .departamento-dropdown .list-group-item,
+        .marca-dropdown .list-group-item {
+            border: none;
+            border-bottom: 1px solid #f0f0f0;
+            padding: 10px 12px;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+        .departamento-dropdown .list-group-item:last-child,
+        .marca-dropdown .list-group-item:last-child {
+            border-bottom: none;
+        }
+        .departamento-dropdown .list-group-item:hover,
+        .marca-dropdown .list-group-item:hover {
+            background-color: #f8f9fa;
+        }
+        .departamento-dropdown .list-group-item-action.text-primary:hover,
+        .marca-dropdown .list-group-item-action.text-primary:hover {
+            background-color: #e7f3ff;
         }
     </style>
 </head>
@@ -447,6 +636,14 @@ if ($action == 'edit' && $id) {
                 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
                     <h1 class="h2">Gestión de Productos Raíz</h1>
                     <div>
+                        <div class="btn-group me-2" role="group">
+                            <a href="<?php echo buildViewUrl('grid'); ?>" class="btn btn-outline-primary <?php echo $view_mode === 'grid' ? 'active' : ''; ?>" title="Vista de cuadros">
+                                <i class="fas fa-th-large"></i>
+                            </a>
+                            <a href="<?php echo buildViewUrl('table'); ?>" class="btn btn-outline-primary <?php echo $view_mode === 'table' ? 'active' : ''; ?>" title="Vista de tabla">
+                                <i class="fas fa-table"></i>
+                            </a>
+                        </div>
                         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
                             <i class="fas fa-plus me-1"></i> Nuevo Producto
                         </button>
@@ -506,6 +703,7 @@ if ($action == 'edit' && $id) {
                     </div>
                 </div>
 
+                <?php if ($view_mode === 'table'): ?>
                 <div class="card">
                     <div class="card-body">
                         <div class="table-responsive">
@@ -522,7 +720,7 @@ if ($action == 'edit' && $id) {
                                         <th>Etiqueta</th>
                                         <th>Ajitos</th>
                                         <th>Estado</th>
-                                        <th>Acciones</th>
+                                        
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -534,7 +732,7 @@ if ($action == 'edit' && $id) {
                                         $foto_stmt->bindParam(':id', $producto['id_raiz']);
                                         $foto_stmt->execute();
                                         $foto = $foto_stmt->fetch(PDO::FETCH_ASSOC);
-                                        $imagen = $foto ? IMG_DIR . 'productos/' . $foto['nombre_archivo'] : 'https://via.placeholder.com/80';
+                                        $imagen = $foto ? '../../' . IMG_DIR . 'productos/' . $foto['nombre_archivo'] : 'https://via.placeholder.com/80';
                                     ?>
                                     <tr>
                                         <td><?php echo $producto['id_raiz']; ?></td>
@@ -561,21 +759,7 @@ if ($action == 'edit' && $id) {
                                                 <?php echo $producto['activo'] ? 'Activo' : 'Inactivo'; ?>
                                             </span>
                                         </td>
-                                        <td>
-                                            <a href="productos.php?action=edit&id=<?php echo $producto['id_raiz']; ?>" 
-                                               class="btn btn-sm btn-warning" title="Editar">
-                                                <i class="fas fa-edit"></i>
-                                            </a>
-                                            <a href="variantes.php?producto=<?php echo $producto['id_raiz']; ?>" 
-                                               class="btn btn-sm btn-info" title="Variantes">
-                                                <i class="fas fa-layer-group"></i>
-                                            </a>
-                                            <button class="btn btn-sm btn-secondary" 
-                                                    onclick="viewDetails(<?php echo $producto['id_raiz']; ?>)" 
-                                                    title="Detalles">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                        </td>
+                                        
                                     </tr>
                                     <?php endforeach; ?>
                                 </tbody>
@@ -583,6 +767,33 @@ if ($action == 'edit' && $id) {
                         </div>
                     </div>
                 </div>
+                <?php else: ?>
+                <div class="row g-3">
+                    <?php foreach ($productos as $producto): 
+                        $foto_query = "SELECT nombre_archivo FROM productos_raiz_fotos 
+                                      WHERE id_producto_raiz = :id AND es_principal = 1 LIMIT 1";
+                        $foto_stmt = $db->prepare($foto_query);
+                        $foto_stmt->bindParam(':id', $producto['id_raiz']);
+                        $foto_stmt->execute();
+                        $foto = $foto_stmt->fetch(PDO::FETCH_ASSOC);
+                        $imagen = $foto ? '../../' . IMG_DIR . 'productos/' . $foto['nombre_archivo'] : 'https://via.placeholder.com/300x200?text=Sin+imagen';
+                    ?>
+                    <div class="col-sm-6 col-md-4 col-xl-3">
+                        <a href="detalle_producto.php?id=<?php echo $producto['id_raiz']; ?>" class="text-decoration-none text-dark">
+                            <div class="product-grid-card">
+                                <img src="<?php echo $imagen; ?>" alt="Producto" onerror="this.src='https://via.placeholder.com/300x200?text=Sin+imagen'">
+                                <div class="card-body">
+                                    <div class="fw-semibold"><?php echo $producto['nombre']; ?></div>
+                                    <div class="text-muted small"><?php echo $producto['departamento_nombre']; ?></div>
+                                    <div class="product-grid-price"><?php echo formatMoney($producto['precio_venta']); ?></div>
+                                </div>
+                            </div>
+                        </a>
+                        
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
             </main>
         </div>
     </div>
@@ -613,26 +824,28 @@ if ($action == 'edit' && $id) {
                         
                         <div class="row">
                             <div class="col-md-6 mb-3">
-                                <label for="id_departamento" class="form-label">Departamento *</label>
-                                <select class="form-select" id="id_departamento" name="id_departamento" required>
-                                    <option value="">Seleccionar departamento</option>
-                                    <?php foreach ($departamentos as $depto): ?>
-                                        <option value="<?php echo $depto['id_departamento']; ?>">
-                                            <?php echo $depto['nombre']; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
+                                <label for="departamento_search" class="form-label">Departamento *</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="departamento_search" placeholder="Buscar o crear...">
+                                    <button class="btn btn-outline-primary" type="button" id="btn_new_departamento" title="Crear nuevo">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <div class="list-group mt-1 departamento-dropdown" style="display: none; max-height: 200px; overflow-y: auto; position: absolute; width: 45%; z-index: 1000;"></div>
+                                <input type="hidden" id="id_departamento" name="id_departamento" required>
+                                <small id="departamento_selected" class="text-muted d-block mt-1"></small>
                             </div>
                             <div class="col-md-6 mb-3">
-                                <label for="id_marca" class="form-label">Marca</label>
-                                <select class="form-select" id="id_marca" name="id_marca">
-                                    <option value="">Sin marca</option>
-                                    <?php foreach ($marcas as $marca): ?>
-                                        <option value="<?php echo $marca['id_marca']; ?>">
-                                            <?php echo $marca['nombre']; ?>
-                                        </option>
-                                    <?php endforeach; ?>
-                                </select>
+                                <label for="marca_search" class="form-label">Marca</label>
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="marca_search" placeholder="Buscar o crear...">
+                                    <button class="btn btn-outline-primary" type="button" id="btn_new_marca" title="Crear nuevo">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                                <div class="list-group mt-1 marca-dropdown" style="display: none; max-height: 200px; overflow-y: auto; position: absolute; width: 45%; z-index: 1000;"></div>
+                                <input type="hidden" id="id_marca" name="id_marca">
+                                <small id="marca_selected" class="text-muted d-block mt-1"></small>
                             </div>
                         </div>
                         
@@ -873,17 +1086,25 @@ if ($action == 'edit' && $id) {
                                 <label class="form-label">Fotos Actuales</label>
                                 <div class="row">
                                     <?php foreach ($producto_fotos as $foto): ?>
-                                    <div class="col-md-4 mb-3 photo-container">
-                                        <img src="<?php echo IMG_DIR . 'productos/' . $foto['nombre_archivo']; ?>" 
+                                    <div class="col-md-4 mb-3 photo-container position-relative">
+                                        <img src="<?php echo '../../' . IMG_DIR . 'productos/' . $foto['nombre_archivo']; ?>" 
                                              class="photo-thumbnail <?php echo $foto['es_principal'] ? 'active' : ''; ?>"
                                              onclick="setMainPhoto(<?php echo $foto['id_foto']; ?>)"
                                              title="<?php echo $foto['es_principal'] ? 'Foto Principal' : 'Hacer Principal'; ?>">
                                         <div class="photo-actions">
+                                            <button type="button" class="btn btn-sm btn-warning" 
+                                                    onclick="triggerReplacePhoto(<?php echo $foto['id_foto']; ?>)"
+                                                    title="Reemplazar foto">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
                                             <button type="button" class="btn btn-sm btn-danger" 
                                                     onclick="deletePhoto(<?php echo $foto['id_foto']; ?>, <?php echo $producto_edit['id_raiz']; ?>)">
                                                 <i class="fas fa-trash"></i>
                                             </button>
                                         </div>
+                                        <input type="file" class="d-none" id="foto_input_<?php echo $foto['id_foto']; ?>" 
+                                               accept="image/*" data-foto-id="<?php echo $foto['id_foto']; ?>"
+                                               onchange="confirmReplacePhoto(this)">
                                         <?php if ($foto['es_principal']): ?>
                                             <div class="badge bg-success mt-1">Principal</div>
                                         <?php endif; ?>
@@ -915,8 +1136,178 @@ if ($action == 'edit' && $id) {
         <input type="hidden" name="id_foto" id="main_photo_id">
         <input type="hidden" name="id_raiz" id="main_photo_raiz">
     </form>
+    
+    <form id="replacePhotoForm" method="POST" enctype="multipart/form-data" style="display: none;">
+        <input type="hidden" name="action" value="replace_photo">
+        <input type="hidden" name="id_foto" id="replace_photo_id">
+        <input type="hidden" name="id_raiz" id="replace_photo_raiz">
+        <input type="file" name="foto_reemplazo" id="replace_photo_input" accept="image/*">
+    </form>
+
 
     <script>
+        // Datos para los dropdowns
+        const departamentosData = <?php echo json_encode($departamentos); ?>;
+        const marcasData = <?php echo json_encode($marcas); ?>;
+        
+        class SearchableDropdown {
+            constructor(searchInputId, dropdownId, hiddenInputId, selectedTextId, dataArray, type) {
+                this.searchInput = document.getElementById(searchInputId);
+                this.dropdown = document.querySelector(dropdownId);
+                this.hiddenInput = document.getElementById(hiddenInputId);
+                this.selectedText = document.getElementById(selectedTextId);
+                this.data = dataArray;
+                this.type = type;
+                this.createBtn = document.getElementById(`btn_new_${type}`);
+                
+                this.init();
+            }
+            
+            init() {
+                // Evento para mostrar/ocultar dropdown
+                this.searchInput.addEventListener('focus', () => this.showDropdown());
+                this.searchInput.addEventListener('input', (e) => this.filterDropdown(e.target.value));
+                
+                // Cerrar dropdown al hacer clic fuera
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest(`.${this.type}-dropdown`) && e.target !== this.searchInput) {
+                        this.hideDropdown();
+                    }
+                });
+                
+                // Botón para crear nuevo
+                this.createBtn.addEventListener('click', () => this.showCreateModal());
+                
+                this.renderDropdown();
+            }
+            
+            renderDropdown(items = this.data) {
+                this.dropdown.innerHTML = '';
+                
+                if (items.length === 0) {
+                    const searchValue = this.searchInput.value.trim();
+                    if (searchValue) {
+                        const createOption = document.createElement('a');
+                        createOption.href = '#';
+                        createOption.className = 'list-group-item list-group-item-action text-primary fw-bold';
+                        createOption.innerHTML = `<i class="fas fa-plus"></i> Crear "${searchValue}"`;
+                        createOption.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            this.createNew(searchValue);
+                        });
+                        this.dropdown.appendChild(createOption);
+                    }
+                    return;
+                }
+                
+                items.forEach(item => {
+                    const option = document.createElement('a');
+                    option.href = '#';
+                    option.className = 'list-group-item list-group-item-action';
+                    const keyName = this.type === 'departamento' ? 'nombre' : 'nombre';
+                    const keyId = this.type === 'departamento' ? 'id_departamento' : 'id_marca';
+                    option.textContent = item[keyName];
+                    option.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.select(item[keyId], item[keyName]);
+                    });
+                    this.dropdown.appendChild(option);
+                });
+            }
+            
+            filterDropdown(searchValue) {
+                if (!searchValue) {
+                    this.renderDropdown();
+                    return;
+                }
+                
+                const filtered = this.data.filter(item => {
+                    const keyName = this.type === 'departamento' ? 'nombre' : 'nombre';
+                    return item[keyName].toLowerCase().includes(searchValue.toLowerCase());
+                });
+                
+                this.renderDropdown(filtered);
+            }
+            
+            select(id, name) {
+                this.hiddenInput.value = id;
+                this.searchInput.value = name;
+                this.selectedText.textContent = `Seleccionado: ${name}`;
+                this.hideDropdown();
+            }
+            
+            showDropdown() {
+                this.dropdown.style.display = 'block';
+            }
+            
+            hideDropdown() {
+                this.dropdown.style.display = 'none';
+            }
+            
+            createNew(name) {
+                const formData = new FormData();
+                formData.append('action', `create_${this.type}`);
+                formData.append('nombre', name);
+                
+                fetch('productos.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Agregar nuevo item a la lista
+                        const newItem = {
+                            [this.type === 'departamento' ? 'id_departamento' : 'id_marca']: data.id,
+                            'nombre': data.nombre
+                        };
+                        this.data.push(newItem);
+                        
+                        // Seleccionar automáticamente
+                        this.select(data.id, data.nombre);
+                        
+                        // Mostrar notificación
+                        this.showNotification(`${this.type === 'departamento' ? 'Departamento' : 'Marca'} creado exitosamente`, 'success');
+                    } else {
+                        this.showNotification(data.message || 'Error al crear', 'danger');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    this.showNotification('Error al procesar la solicitud', 'danger');
+                });
+            }
+            
+            showCreateModal() {
+                const name = prompt(`Ingresa el nombre del/de la ${this.type}:`);
+                if (name && name.trim()) {
+                    this.createNew(name.trim());
+                }
+            }
+            
+            showNotification(message, type = 'info') {
+                const alert = document.createElement('div');
+                alert.className = `alert alert-${type} alert-dismissible fade show`;
+                alert.setAttribute('role', 'alert');
+                alert.innerHTML = `
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                `;
+                document.body.insertBefore(alert, document.body.firstChild);
+                
+                setTimeout(() => alert.remove(), 3000);
+            }
+        }
+
+        
+        // Inicializar dropdowns cuando se abre el modal
+        document.getElementById('createModal').addEventListener('show.bs.modal', function() {
+            setTimeout(() => {
+                new SearchableDropdown('departamento_search', '.departamento-dropdown', 'id_departamento', 'departamento_selected', departamentosData, 'departamento');
+                new SearchableDropdown('marca_search', '.marca-dropdown', 'id_marca', 'marca_selected', marcasData, 'marca');
+            }, 100);
+        });
+        
         function deletePhoto(id_foto, id_raiz) {
             if (confirm('¿Está seguro de eliminar esta foto?')) {
                 document.getElementById('delete_photo_id').value = id_foto;
@@ -929,6 +1320,64 @@ if ($action == 'edit' && $id) {
             document.getElementById('main_photo_id').value = id_foto;
             document.getElementById('main_photo_raiz').value = <?php echo $producto_edit ? $producto_edit['id_raiz'] : 0; ?>;
             document.getElementById('setMainPhotoForm').submit();
+        }
+        
+        function triggerReplacePhoto(id_foto) {
+            // Activar input de archivo hidden
+            document.getElementById('foto_input_' + id_foto).click();
+        }
+        
+        function confirmReplacePhoto(inputElement) {
+            const fotoId = inputElement.getAttribute('data-foto-id');
+            const file = inputElement.files[0];
+            
+            if (!file) return;
+            
+            // Validar tipos de archivo
+            const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            if (!validTypes.includes(file.type)) {
+                alert('Por favor selecciona un archivo de imagen válido (JPG, PNG, GIF, WebP)');
+                inputElement.value = '';
+                return;
+            }
+            
+            // Validar tamaño (máximo 5MB)
+            const maxSize = 5 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert('La imagen es demasiado grande. Máximo 5MB.');
+                inputElement.value = '';
+                return;
+            }
+            
+            if (confirm('¿Deseas reemplazar esta foto? La anterior se eliminará.')) {
+                // Crear FormData y enviar
+                const formData = new FormData();
+                formData.append('action', 'replace_photo');
+                formData.append('id_foto', fotoId);
+                formData.append('id_raiz', <?php echo $producto_edit ? $producto_edit['id_raiz'] : 0; ?>);
+                formData.append('foto_reemplazo', file);
+                
+                // Mostrar indicador de carga
+                inputElement.disabled = true;
+                
+                fetch('productos.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(() => {
+                    // Recargar la página para mostrar los cambios
+                    location.reload();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error al reemplazar la foto');
+                    inputElement.disabled = false;
+                    inputElement.value = '';
+                });
+            } else {
+                inputElement.value = '';
+            }
         }
         
         function viewDetails(id) {

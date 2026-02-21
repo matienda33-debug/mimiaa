@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 
@@ -159,33 +159,44 @@ try {
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
+        :root {
+            --brand-primary: #D092D6;
+            --brand-primary-dark: #b677be;
+            --brand-ink: #ffffff;
+            --sidebar-bg: #F4C7F0;
+            --sidebar-bg-hover: #EFB4EA;
+            --ajitos-bg: #C2EDE8;
+            --ajitos-text: #1f2a29;
+        }
         .sidebar {
             min-height: 100vh;
-            background: #2c3e50;
+            background: var(--sidebar-bg);
         }
         .sidebar .nav-link {
-            color: #ecf0f1;
+            color: #4a2b4f;
             padding: 10px 15px;
             margin: 5px 0;
+            border-radius: 6px;
         }
         .sidebar .nav-link:hover {
-            background: #34495e;
-            color: #1abc9c;
+            background: var(--sidebar-bg-hover);
+            color: #3b1f3f;
         }
         .sidebar .nav-link.active {
-            background: #1abc9c;
-            color: white;
+            background: var(--brand-primary);
+            color: var(--brand-ink);
         }
         .brand-title {
-            color: #1abc9c;
+            color: #3b1f3f;
             font-weight: bold;
         }
         .ajitos-badge {
-            background: #e74c3c;
-            color: white;
+            background: var(--ajitos-bg);
+            color: var(--ajitos-text);
             padding: 2px 8px;
-            border-radius: 4px;
+            border-radius: 999px;
             font-size: 0.8rem;
+            font-weight: 600;
         }
         .stat-card {
             border-radius: 10px;
@@ -235,6 +246,9 @@ try {
                                 <i class="fas fa-users me-2"></i> Usuarios
                             </a>
                         </li>
+                        <?php endif; ?>
+
+                        <?php if ($auth->hasPermission('usuarios') || $auth->hasPermission('crear_clientes')): ?>
                         <li class="nav-item">
                             <a class="nav-link" href="panel.php?view=personas">
                                 <i class="fas fa-address-card me-2"></i> Personas
@@ -426,7 +440,7 @@ try {
                                                     <th>Fecha</th>
                                                     <th>Total</th>
                                                     <th>Estado actual</th>
-                                                    <th>Cambiar estado</th>
+                                                    <th>Acciones</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -453,18 +467,47 @@ try {
                                                             </span>
                                                         </td>
                                                         <td>
-                                                            <form method="POST" class="d-flex gap-2">
-                                                                <input type="hidden" name="action" value="actualizar_estado_pedido">
-                                                                <input type="hidden" name="id_factura" value="<?php echo (int) $pedido['id_factura']; ?>">
-                                                                <select class="form-select form-select-sm" name="id_estado" required>
-                                                                    <?php foreach ($estados_pedido as $estado): ?>
-                                                                        <option value="<?php echo (int) $estado['id_estado']; ?>" <?php echo ((int)$pedido['id_estado'] === (int)$estado['id_estado']) ? 'selected' : ''; ?>>
-                                                                            <?php echo htmlspecialchars(ucfirst($estado['nombre'])); ?>
-                                                                        </option>
-                                                                    <?php endforeach; ?>
-                                                                </select>
-                                                                <button type="submit" class="btn btn-sm btn-primary">Guardar</button>
-                                                            </form>
+                                                            <div class="d-flex gap-1 flex-wrap">
+                                                                <a href="panel.php?view=ventas&action=detalle&id=<?php echo (int) $pedido['id_factura']; ?>" class="btn btn-sm btn-info" title="Ver detalle">
+                                                                    <i class="fas fa-eye me-1"></i>Detalle
+                                                                </a>
+                                                                <button type="button" class="btn btn-sm btn-warning" data-bs-toggle="modal" data-bs-target="#modalCambiarEstado<?php echo (int) $pedido['id_factura']; ?>" title="Cambiar estado">
+                                                                    <i class="fas fa-sync-alt me-1"></i>Estado
+                                                                </button>
+                                                            </div>
+                                                            
+                                                            <!-- Modal para cambiar estado -->
+                                                            <div class="modal fade" id="modalCambiarEstado<?php echo (int) $pedido['id_factura']; ?>" tabindex="-1">
+                                                                <div class="modal-dialog">
+                                                                    <div class="modal-content">
+                                                                        <div class="modal-header">
+                                                                            <h5 class="modal-title">Cambiar estado - <?php echo htmlspecialchars($pedido['numero_factura']); ?></h5>
+                                                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                                                        </div>
+                                                                        <div class="modal-body">
+                                                                            <form method="POST" id="formEstado<?php echo (int) $pedido['id_factura']; ?>">
+                                                                                <input type="hidden" name="action" value="actualizar_estado_pedido">
+                                                                                <input type="hidden" name="id_factura" value="<?php echo (int) $pedido['id_factura']; ?>">
+                                                                                <div class="mb-3">
+                                                                                    <label class="form-label">Nuevo estado:</label>
+                                                                                    <select class="form-select" name="id_estado" required>
+                                                                                        <option value="">-- Selecciona un estado --</option>
+                                                                                        <?php foreach ($estados_pedido as $estado): ?>
+                                                                                            <option value="<?php echo (int) $estado['id_estado']; ?>" <?php echo ((int)$pedido['id_estado'] === (int)$estado['id_estado']) ? 'selected' : ''; ?>>
+                                                                                                <?php echo htmlspecialchars(ucfirst($estado['nombre'])); ?>
+                                                                                            </option>
+                                                                                        <?php endforeach; ?>
+                                                                                    </select>
+                                                                                </div>
+                                                                            </form>
+                                                                        </div>
+                                                                        <div class="modal-footer">
+                                                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                                                                            <button type="submit" form="formEstado<?php echo (int) $pedido['id_factura']; ?>" class="btn btn-primary">Guardar cambio</button>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                         </td>
                                                     </tr>
                                                 <?php endforeach; ?>

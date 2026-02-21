@@ -45,7 +45,7 @@ class Auth {
     
     public function logout() {
         session_destroy();
-        header('Location: ../index.php');
+        header('Location: /tiendaAA/index.php');
         exit();
     }
     
@@ -61,8 +61,13 @@ class Auth {
     }
     
     public function requirePermission($permission) {
-        if (!$this->isLoggedIn() || !$this->hasPermission($permission)) {
-            header('Location: ../index.php?error=no_permission');
+        if (!$this->isLoggedIn()) {
+            header('Location: /tiendaAA/index.php');
+            exit();
+        }
+
+        if (!$this->hasPermission($permission)) {
+            header('Location: /tiendaAA/modules/mod1/panel.php?error=no_permission');
             exit();
         }
     }

@@ -313,9 +313,9 @@ CREATE TABLE `roles` (
 --
 
 INSERT INTO `roles` (`id_rol`, `nombre`, `descripcion`, `permisos`) VALUES
-(1, 'admin', 'Administrador total del sistema', '[\"usuarios\",\"productos\",\"ventas\",\"reportes\",\"configuracion\",\"inventario\",\"contabilidad\"]'),
-(2, 'trabajador1', 'Trabajador nivel 1 - Ventas y consultas', '[\"ventas\",\"productos\",\"clientes\"]'),
-(3, 'trabajador2', 'Trabajador nivel 2 - Ventas e inventario', '[\"ventas\",\"productos\",\"clientes\",\"inventario\"]'),
+(1, 'admin', 'Administrador total del sistema', '[\"usuarios\",\"productos\",\"ventas\",\"reportes\",\"configuracion\",\"inventario\",\"contabilidad\",\"crear_clientes\"]'),
+(2, 'trabajador1', 'Trabajador nivel 1 - Ventas y consultas', '[\"ventas\",\"productos\",\"clientes\",\"crear_clientes\"]'),
+(3, 'trabajador2', 'Trabajador nivel 2 - Ventas e inventario', '[\"ventas\",\"productos\",\"clientes\",\"inventario\",\"crear_clientes\"]'),
 (4, 'cliente', 'Cliente externo', '[\"comprar\",\"ver_perfil\",\"ver_puntos\"]');
 
 -- --------------------------------------------------------

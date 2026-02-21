@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación y permiso
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 $auth->requirePermission('inventario');

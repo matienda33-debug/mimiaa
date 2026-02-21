@@ -8,10 +8,10 @@ $auth = new Auth($db);
 
 // Verificar autenticación y permiso
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
-$auth->requirePermission('usuarios');
+$auth->requirePermission('crear_clientes');
 
 $embedded = isset($_GET['embedded']) && $_GET['embedded'] === '1';
 
@@ -30,21 +30,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $telefono = sanitize($_POST['telefono']);
         $direccion = sanitize($_POST['direccion']);
         
-        $query = "INSERT INTO clientes (dpi, nombre, apellido, email, telefono, direccion, puntos, activo) 
-                  VALUES (:dpi, :nombre, :apellido, :email, :telefono, :direccion, 0, 1)";
+        // Verificar si el DPI ya existe
+        $check_query = "SELECT id_cliente FROM clientes WHERE dpi = :dpi";
+        $check_stmt = $db->prepare($check_query);
+        $check_stmt->bindParam(':dpi', $dpi);
+        $check_stmt->execute();
         
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(':dpi', $dpi);
-        $stmt->bindParam(':nombre', $nombre);
-        $stmt->bindParam(':apellido', $apellido);
-        $stmt->bindParam(':email', $email);
-        $stmt->bindParam(':telefono', $telefono);
-        $stmt->bindParam(':direccion', $direccion);
-        
-        if ($stmt->execute()) {
-            $success = "Cliente creado exitosamente.";
+        if ($check_stmt->rowCount() > 0) {
+            // Cliente ya existe - actualizar información
+            $cliente_existente = $check_stmt->fetch(PDO::FETCH_ASSOC);
+            $update_query = "UPDATE clientes SET nombre = :nombre, apellido = :apellido, 
+                            email = :email, telefono = :telefono, direccion = :direccion 
+                            WHERE id_cliente = :id";
+            $update_stmt = $db->prepare($update_query);
+            $update_stmt->bindParam(':nombre', $nombre);
+            $update_stmt->bindParam(':apellido', $apellido);
+            $update_stmt->bindParam(':email', $email);
+            $update_stmt->bindParam(':telefono', $telefono);
+            $update_stmt->bindParam(':direccion', $direccion);
+            $update_stmt->bindParam(':id', $cliente_existente['id_cliente']);
+            
+            if ($update_stmt->execute()) {
+                $success = "Cliente actualizado exitosamente. DPI ya existía.";
+            } else {
+                $error = "Error al actualizar cliente.";
+            }
         } else {
-            $error = "Error al crear cliente. El DPI o Email ya existe.";
+            // Crear nuevo cliente
+            $query = "INSERT INTO clientes (dpi, nombre, apellido, email, telefono, direccion, puntos, activo) 
+                      VALUES (:dpi, :nombre, :apellido, :email, :telefono, :direccion, 0, 1)";
+            
+            $stmt = $db->prepare($query);
+            $stmt->bindParam(':dpi', $dpi);
+            $stmt->bindParam(':nombre', $nombre);
+            $stmt->bindParam(':apellido', $apellido);
+            $stmt->bindParam(':email', $email);
+            $stmt->bindParam(':telefono', $telefono);
+            $stmt->bindParam(':direccion', $direccion);
+            
+            if ($stmt->execute()) {
+                $success = "Cliente creado exitosamente.";
+            } else {
+                $error = "Error al crear cliente.";
+            }
         }
     }
     elseif ($_POST['action'] == 'update') {

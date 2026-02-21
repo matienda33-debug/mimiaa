@@ -8,7 +8,7 @@ $auth = new Auth($db);
 
 // Verificar autenticación y permiso
 if (!$auth->isLoggedIn()) {
-    header('Location: ../../index.php');
+    header('Location: /tiendaAA/index.php');
     exit();
 }
 $auth->requirePermission('usuarios');
@@ -67,25 +67,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $telefono = sanitize($_POST['telefono']);
         $id_rol = $_POST['id_rol'];
         $activo = isset($_POST['activo']) ? 1 : 0;
-        
-        $query = "UPDATE usuarios SET email = :email, nombre = :nombre, apellido = :apellido, 
-                  dpi = :dpi, telefono = :telefono, id_rol = :id_rol, activo = :activo 
-                  WHERE id_usuario = :id";
-        
-        $stmt = $db->prepare($query);
-        $stmt->bindParam(':email', $email);
-        $stmt->bindParam(':nombre', $nombre);
-        $stmt->bindParam(':apellido', $apellido);
-        $stmt->bindParam(':dpi', $dpi);
-        $stmt->bindParam(':telefono', $telefono);
-        $stmt->bindParam(':id_rol', $id_rol);
-        $stmt->bindParam(':activo', $activo);
-        $stmt->bindParam(':id', $id_usuario);
-        
-        if ($stmt->execute()) {
-            $success = "Usuario actualizado exitosamente.";
+        $password = isset($_POST['password']) ? $_POST['password'] : '';
+        $password_confirm = isset($_POST['password_confirm']) ? $_POST['password_confirm'] : '';
+
+        $password_hash = null;
+        if (!empty($password) || !empty($password_confirm)) {
+            if ($password !== $password_confirm) {
+                $error = "Las contraseñas no coinciden.";
+            } elseif (strlen($password) < 6) {
+                $error = "La contraseña debe tener al menos 6 caracteres.";
+            } else {
+                $password_hash = password_hash($password, PASSWORD_DEFAULT);
+            }
+        }
+
+        if (isset($error)) {
+            // Skip update if validation fails
         } else {
-            $error = "Error al actualizar usuario.";
+            $password_sql = $password_hash ? ", password = :password" : "";
+        
+            $query = "UPDATE usuarios SET email = :email, nombre = :nombre, apellido = :apellido, 
+                      dpi = :dpi, telefono = :telefono, id_rol = :id_rol, activo = :activo$password_sql 
+                      WHERE id_usuario = :id";
+        
+            $stmt = $db->prepare($query);
+            $stmt->bindParam(':email', $email);
+            $stmt->bindParam(':nombre', $nombre);
+            $stmt->bindParam(':apellido', $apellido);
+            $stmt->bindParam(':dpi', $dpi);
+            $stmt->bindParam(':telefono', $telefono);
+            $stmt->bindParam(':id_rol', $id_rol);
+            $stmt->bindParam(':activo', $activo);
+            $stmt->bindParam(':id', $id_usuario);
+            if ($password_hash) {
+                $stmt->bindParam(':password', $password_hash);
+            }
+
+            if ($stmt->execute()) {
+                $success = "Usuario actualizado exitosamente.";
+            } else {
+                $error = "Error al actualizar usuario.";
+            }
         }
     }
     elseif ($_POST['action'] == 'delete') {
@@ -350,6 +372,18 @@ if ($action == 'edit' && $id) {
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="edit_password" class="form-label">Nueva contraseña</label>
+                                <input type="password" class="form-control" id="edit_password" name="password" autocomplete="new-password">
+                                <small class="text-muted">Dejar en blanco para no cambiarla.</small>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="edit_password_confirm" class="form-label">Confirmar contraseña</label>
+                                <input type="password" class="form-control" id="edit_password_confirm" name="password_confirm" autocomplete="new-password">
                             </div>
                         </div>
                         

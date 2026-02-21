@@ -1,0 +1,4 @@
+2026-02-21 09:20:11 | Para: wagneresau13@gmail.com | Factura: ONL-202602215430 | Error: SMTP Error: Could not connect to SMTP host. Connection failed. stream_socket_enable_crypto(): SSL operation failed with code 1. OpenSSL Error messages:
+error:0A000086:SSL routines::certificate verify failed SMTP server error: QUIT command failed
+2026-02-21 09:21:18 | Para: wagneresau13@gmail.com | Factura: ONL-202602219256 | Error: SMTP Error: Could not connect to SMTP host. Connection failed. stream_socket_enable_crypto(): SSL operation failed with code 1. OpenSSL Error messages:
+error:0A000086:SSL routines::certificate verify failed SMTP server error: QUIT command failed
